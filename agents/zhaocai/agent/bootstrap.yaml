@@ -2,13 +2,28 @@ name: zhaocai
 description: 招财 - 股票投资助手
 heartbeat:
   enabled: true
+  intervalMinutes: 60
+  activeHours: "08:00-17:00 Asia/Shanghai"
+  description: 全持仓异动快扫（个股+场内ETF+场外基金穿透+外汇大宗）
 cron:
+  - name: 国际金融事件监控
+    schedule: "0 8,12,18,22 * * *"
+    description: 每天4次搜索重大国际金融事件，有事件才推送
   - name: 晨报
-    schedule: "0 9 * * 1-5"
-    description: 早上9点获取新闻和市场动态，给出投资建议
-  - name: 盘中监控
-    schedule: "0 10,11,13,14 * * 1-5"
-    description: 整点获取实时行情和新闻
+    schedule: "30 8 * * 1-5"
+    description: 交易日08:30 昨日回顾+新闻集锦+今日展望+投资机会推荐
+  - name: 基金尾盘分析
+    schedule: "45 14 * * 1-5"
+    description: 交易日14:45 持仓盈亏+基金穿透+尾盘操作建议
   - name: 收盘总结
-    schedule: "0 15 * * 1-5"
-    description: 下午3点收盘分析
+    schedule: "30 15 * * 1-5"
+    description: 交易日15:30 大盘+持仓+核心驱动+明日展望+投资精华
+  - name: 市场异动监控
+    schedule: "0 9-15 * * 1-5"
+    description: 交易日每小时运行scan_alert.py，有异动才推送
+  - name: 短线标的实时监控
+    schedule: "0,30 9-15 * * 1-5"
+    description: 交易日每半小时验证晨报推荐标的，收盘复盘命中率
+  - name: 每周基金持仓穿透更新
+    schedule: "0 8 * * 1"
+    description: 每周一更新14只基金十大重仓股数据

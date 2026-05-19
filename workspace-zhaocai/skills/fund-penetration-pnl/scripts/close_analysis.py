@@ -6,35 +6,21 @@ close_analysis.py
 """
 import requests, re, time, json
 
-# ── 用户持仓 ──────────────────────────────────────────────
-MY_STOCKS = {
-    "300896": {"name": "爱美客",   "shares": 420,  "cost": 478.847},
-    "600309": {"name": "万华化学", "shares": 300,  "cost": 88.690},
-    "600352": {"name": "浙江龙盛", "shares": 1000, "cost": 12.924},
-    "688363": {"name": "华熙生物", "shares": 300,  "cost": 238.043},
-    "002176": {"name": "江特电机", "shares": 1000, "cost": 25.506},
-    "002172": {"name": "澳洋健康", "shares": 2000, "cost": 6.530},
-    "000652": {"name": "泰达股份", "shares": 1000, "cost": 10.105},
-    "002551": {"name": "尚荣医疗", "shares": 1000, "cost": 4.600},
-    "600221": {"name": "海航控股", "shares": 1000, "cost": 6.236},
-}
+# ── 用户持仓（从统一 holdings.json 读取）──────────────────────
+import pathlib as _pathlib
+_HOLDINGS_PATH = _pathlib.Path(__file__).parent.parent.parent.parent / "holdings.json"
 
-MY_FUNDS = {
-    "163402": {"name": "兴全趋势投资",       "shares": 134513.34},
-    "006113": {"name": "汇添富创新医药A",     "shares": 1508.31},
-    "519069": {"name": "汇添富价值精选A",    "shares": 1127.23},
-    "166002": {"name": "中欧新蓝筹A",         "shares": 37630.83},
-    "000979": {"name": "景顺长城沪港深精选A", "shares": 4638.32},
-    "006751": {"name": "富国互联科技A",       "shares": 23739.17},
-    "004477": {"name": "嘉实沪港深回报",      "shares": 35096.95},
-    "001371": {"name": "富国沪港深价值精选A", "shares": 33887.86},
-    "166005": {"name": "中欧价值发现A",       "shares": 11491.47},
-    "160706": {"name": "沪深300LOF",         "shares": 18541.19},
-    "001668": {"name": "汇添富全球移动互联A", "shares": 4206.06},
-    "118001": {"name": "易方达亚洲精选",      "shares": 5978.46},
-    "004965": {"name": "泓德致远混合A",        "shares": 2415.48},
-    "450009": {"name": "国富中小盘A",         "shares": 1706.26},
-}
+def _load_holdings():
+    if _HOLDINGS_PATH.exists():
+        with open(_HOLDINGS_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    return {"stocks": {}, "etfs": {}, "funds": {}}
+
+_H = _load_holdings()
+MY_STOCKS = {code: {"name": info["name"], "shares": info["shares"], "cost": info["cost"]}
+             for code, info in _H.get("stocks", {}).items()}
+MY_FUNDS = {code: {"name": info["name"], "shares": info["shares"]}
+            for code, info in _H.get("funds", {}).items()}
 
 FUND_HOLDINGS_PATH = __import__('pathlib').Path(__file__).parent.parent.parent / "market-alert" / "references" / "fund_holdings.json"
 

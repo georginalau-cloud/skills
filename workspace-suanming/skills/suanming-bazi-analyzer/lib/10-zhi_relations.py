@@ -26,13 +26,15 @@ from .ganzhi_calculator import (
 )
 
 
-def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset) -> dict:
+def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset, all_tiangan: list = None) -> dict:
     """
     分析一个新地支与现有地支集合之间的所有关系。
 
     参数：
         new_zhi:       新加入的地支（大运/流年/流月/流日）
         existing_zhis: 已有的地支集合（命局 + 已叠加的大运/流年等）
+        all_tiangan:   所有层级的天干列表（用于检查透出），如 ['己','丁','癸','己','庚','丙','癸','甲']
+                       不传则不做透出检查（向后兼容）
 
     返回：
         {
@@ -44,6 +46,7 @@ def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset) -> dict:
                     'weight':  4.0,           # 力量权重
                     'desc':    '...',         # 描述文字
                     'is_positive': True,      # 是否为正面（合/会为正，冲/刑/害/破为负）
+                    'touchu':  True,          # 天干是否透出（三合/三会才有此字段）
                 }
             ],
             'net_score':   2.5,   # 综合得分（正=有利，负=不利）
@@ -57,14 +60,19 @@ def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset) -> dict:
     # ── 1. 三会局（力量最强）────────────────────────────────────
     for members, element, name in ZHI_SANHUI:
         if new_zhi in members and members.issubset(all_zhis):
+            # 天干透出检查：该五行的天干是否在 all_tiangan 中出现
+            touchu = _check_touchu(element, all_tiangan)
+            touchu_factor = 1.0 if touchu else 0.75  # 无透出力量打75折
+            touchu_note = '' if touchu else '（天干未透出，力量略减）'
             relations.append({
                 'type':        '三会',
                 'name':        name,
                 'element':     element,
-                'weight':      ZHI_RELATION_WEIGHTS['三会'],
-                'desc':        f'{name}：{element}五行力量极强，可改变命局格局',
+                'weight':      ZHI_RELATION_WEIGHTS['三会'] * touchu_factor,
+                'desc':        f'{name}：{element}五行力量极强，可改变命局格局{touchu_note}',
                 'is_positive': True,
                 'members':     list(members),
+                'touchu':      touchu,
             })
 
     # ── 2. 三合局（力量次之）────────────────────────────────────
@@ -90,8 +98,17 @@ def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset) -> dict:
                     ZHI_CHONG.get(wang_zhi) and
                     ZHI_CHONG[wang_zhi] in all_zhis
                 )
-                weight = ZHI_RELATION_WEIGHTS['三合'] * (0.5 if wang_zhi_chonged else 1.0)
-                note = f'（旺支{wang_zhi}被冲，三合力量减半）' if wang_zhi_chonged else ''
+                # 天干透出检查
+                touchu = _check_touchu(element, all_tiangan)
+                touchu_factor = 1.0 if touchu else 0.7  # 无透出力量打70折
+                chong_factor = 0.5 if wang_zhi_chonged else 1.0
+                weight = ZHI_RELATION_WEIGHTS['三合'] * chong_factor * touchu_factor
+                notes = []
+                if wang_zhi_chonged:
+                    notes.append(f'旺支{wang_zhi}被冲，力量减半')
+                if not touchu:
+                    notes.append('天干未透出，力量略减')
+                note = f'（{"；".join(notes)}）' if notes else ''
                 relations.append({
                     'type':        '三合',
                     'name':        name,
@@ -100,6 +117,7 @@ def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset) -> dict:
                     'desc':        f'{name}：{element}五行聚合，力量较强{note}',
                     'is_positive': True,
                     'members':     list(members),
+                    'touchu':      touchu,
                 })
 
     # ── 3. 六合（两支相合）──────────────────────────────────────
@@ -179,6 +197,48 @@ def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset) -> dict:
                     'is_positive': True,
                     'partner':     zhi_a,
                 })
+
+    # ── 4.5 三合拱（三合局缺旺支/中神）──────────────────────────
+    # 理论依据（《三命通会》）：
+    # 三合局三字中，缺旺支（中神）时，另外两支仍有聚合该五行的趋势，
+    # 称为"拱合"或"拱局"。力量弱于完整三合，但强于普通半三合。
+    # 条件：被拱的旺支不能在命局中出现（填实则破拱）。
+    #
+    # 四组三合拱：
+    #   申子辰合水 → 旺支=子 → 申辰拱子(水)
+    #   寅午戌合火 → 旺支=午 → 寅戌拱午(火)
+    #   巳酉丑合金 → 旺支=酉 → 巳丑拱酉(金)
+    #   亥卯未合木 → 旺支=卯 → 亥未拱卯(木)
+    GONG_SANHE = [
+        # (支A, 支B, 被拱旺支, 五行, 名称)
+        ('申', '辰', '子', '水', '申辰拱子（水局）'),
+        ('寅', '戌', '午', '火', '寅戌拱午（火局）'),
+        ('巳', '丑', '酉', '金', '巳丑拱酉（金局）'),
+        ('亥', '未', '卯', '木', '亥未拱卯（木局）'),
+    ]
+    for zhi_a, zhi_b, gong_zhi, gong_element, gong_name in GONG_SANHE:
+        # 条件1：新地支是其中一个，另一个在已有集合中
+        # 条件2：被拱的旺支不在命局中（填实则破拱）
+        if new_zhi == zhi_a and zhi_b in existing_zhis and gong_zhi not in all_zhis:
+            relations.append({
+                'type':        '三合拱',
+                'name':        gong_name,
+                'element':     gong_element,
+                'weight':      ZHI_RELATION_WEIGHTS.get('拱合', 0.8),
+                'desc':        f'{gong_name}：{zhi_a}{zhi_b}夹拱旺支{gong_zhi}，{gong_element}五行有暗聚趋势',
+                'is_positive': True,
+                'partner':     zhi_b,
+            })
+        elif new_zhi == zhi_b and zhi_a in existing_zhis and gong_zhi not in all_zhis:
+            relations.append({
+                'type':        '三合拱',
+                'name':        gong_name,
+                'element':     gong_element,
+                'weight':      ZHI_RELATION_WEIGHTS.get('拱合', 0.8),
+                'desc':        f'{gong_name}：{zhi_a}{zhi_b}夹拱旺支{gong_zhi}，{gong_element}五行有暗聚趋势',
+                'is_positive': True,
+                'partner':     zhi_a,
+            })
 
     # ── 5. 六冲（动荡破坏）──────────────────────────────────────
     chong_partner = ZHI_CHONG.get(new_zhi)
@@ -454,3 +514,39 @@ def score_relation_for_element(relations: list, target_element: str) -> float:
             # 合/会强化该五行 → 正分；冲/刑/害弱化 → 负分
             score += weight  # weight 本身已经有正负
     return score
+
+
+# ─────────────────────────────────────────────────────────────────
+# 辅助函数
+# ─────────────────────────────────────────────────────────────────
+
+# 五行对应的天干
+_ELEMENT_TO_STEMS = {
+    '木': {'甲', '乙'},
+    '火': {'丙', '丁'},
+    '土': {'戊', '己'},
+    '金': {'庚', '辛'},
+    '水': {'壬', '癸'},
+}
+
+
+def _check_touchu(element: str, all_tiangan: list = None) -> bool:
+    """
+    检查某五行是否在天干中透出。
+
+    参数：
+        element:      五行（如 '金'）
+        all_tiangan:  所有层级的天干列表（年干、月干、日干、时干、大运干、流年干、流月干、流日干）
+
+    返回：
+        True = 有透出（天干中有该五行的干），False = 无透出
+
+    理论依据（梁湘润《子平真诠》）：
+        地支合局要真正发挥力量，需要天干有该五行的干透出。
+        无透出的合局力量打折（约70-75%），但不是完全无效。
+    """
+    if all_tiangan is None:
+        return True  # 不传天干信息时，保守处理，默认有透出（向后兼容）
+
+    target_stems = _ELEMENT_TO_STEMS.get(element, set())
+    return bool(target_stems & set(all_tiangan))

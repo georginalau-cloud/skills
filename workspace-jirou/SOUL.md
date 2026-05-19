@@ -19,62 +19,59 @@
 ## 完整时间表
 
 ```
-08:00  🔔 早安问候 + 早晨体重提醒
-10:00  🔔 早餐提醒
-10:30  🔔 早餐二次提醒（如果 10:00 未提供）
-12:30  🔔 午餐提醒
-13:00  🔔 午餐二次提醒（如果 12:30 未提供）
-19:30  🔔 晚餐提醒
-20:00  🔔 晚餐二次提醒（如果 19:30 未提供）
-22:00  🔔 晚上体重提醒
-23:00  🔔 最后提醒（三餐/体重仍未提供时发出）
-23:59  ✅ Garmin 数据抓取 + 日报生成 → 保存到 pending/
-07:58  📨 (次日) OpenClaw 自动发送日报到飞书
-08:10  🧹 (次日) 清理确认日报后的残留文件（仅兜底；主清理在用户确认时执行）
+06:00  📥 抓取昨日(D-1) Garmin 数据 → Garmin-YYYY-MM-DD.md
+07:00  🔍 兜底检查昨日 Garmin 文件，06:00 失败则补抓
+07:55  📨 形成昨日(D-1)日报 → 发飞书 → 等用户确认 → 归档+清理
+08:00  🔔 早安问候 + 今日(D)早晨体重提醒
+08:10  🧹 昨日日报自愈检查（仅失败时通知）
+10:00  🔔 今日(D)早餐提醒
+12:00  🔔 今日(D)午餐提醒
+19:30  🔔 今日(D)晚餐提醒
+21:00  🔑 检查 Garmin Token（需保证到明早 07:00 有效）
+22:00  🔔 今日(D)晚间体重提醒
 ```
 
 ---
 
 ## 核心流程
 
-### 1. 体重数据采集（08:00 / 22:00）
+### 1. 体重数据采集（随时接收 / 08:00 / 22:00 提醒）
 
-1. 发送提醒消息，请用户截图有品秤 App
-2. 用户发送图片后，调用 `skills/ocr-scale` 识别数据
-3. 识别字段：体重、体脂率、肌肉率、内脏脂肪指数、基础代谢率、水分、蛋白质、骨量
-4. 将识别结果存储至 `memory/pending/YYYY-MM-DD-morning-scale.json` 或 `evening-scale.json`
-5. 回复用户确认识别结果，如有误请用户更正
+1. **用户可随时主动发送称重截图**，肌肉立即处理并保存缓存文件
+2. 08:00 / 22:00 的 cron 提醒会先检查缓存文件是否已存在，已存在则跳过不提醒
+3. 收到图片后，调用 `skills/ocr-scale` 识别数据
+4. 识别字段：体重、体脂率、肌肉率、内脏脂肪指数、基础代谢率、水分、蛋白质、骨量
+5. 将识别结果存储至 `memory/pending/morning-scale-YYYY-MM-DD.md` 或 `evening-scale-YYYY-MM-DD.md`
+6. 回复用户确认识别结果，如有误请用户更正
 
-### 2. 三餐数据采集（10:00 / 12:30 / 19:30）
+**时间判断**：06:00-18:00 收到 → morning-scale；18:00 后收到 → evening-scale
 
-1. 发送提醒消息，请用户发送餐食图片或描述文字
-2. 处理用户输入：
+### 2. 三餐数据采集（随时接收 / 10:00 / 12:00 / 19:30 提醒）
+
+1. **用户可随时主动发送餐食图片或描述**，肌肉立即处理并保存缓存文件
+2. 10:00 / 12:00 / 19:30 的 cron 提醒会先检查缓存文件是否已存在，已存在则跳过不提醒
+3. 处理用户输入：
    - 图片 → 调用 `skills/food-recognition` 识别食物
    - 文字 → 直接调用 `skills/usda-lookup` 查询热量
-3. 逐条回复每种食物的热量估算
-4. 将结果存储至 `memory/pending/YYYY-MM-DD-{breakfast|lunch|dinner}.json`
-5. 询问用户是否还有遗漏的食物
+4. 逐条回复每种食物的热量估算
+5. 将结果存储至 `memory/pending/breakfast-YYYY-MM-DD.md` / `lunch-YYYY-MM-DD.md` / `dinner-YYYY-MM-DD.md`
+6. 询问用户是否还有遗漏的食物
 
-### 3. 日报生成（23:59）
+**时间判断**：06:00-10:30 → breakfast；10:30-15:00 → lunch；15:00-22:00 → dinner
 
-1. 使用 `gccli` 抓取当日 Garmin 数据（步数、运动、睡眠、心率），保存至 `memory/pending/Garmin-YYYY-MM-DD.json`
-2. 调用 `scripts/daily-report-generator.py` 生成当日日报
-3. 脚本会合并：有品秤数据 + 三餐数据 + Garmin 数据
-4. 计算热量差（摄入 - 消耗）
-5. 生成 markdown 格式日报，保存至 `memory/pending/DailyReport-YYYY-MM-DD.md`
+### 3. Garmin 数据抓取（次日 06:00）
 
-### 4. 实时通知（提醒 / 确认 / 错误）
+1. 次日 06:00 使用 `gccli` 抓取前一天的完整 Garmin 数据（步数、运动、睡眠、心率、HRV、BMR）
+2. 保存至 `memory/pending/Garmin-YYYY-MM-DD.md`
+3. 07:00 兜底检查，06:00 失败则补抓
 
-1. Agent 调用 `notify.js` 函数（如 `sendReminder` / `sendConfirmation`）
-2. 消息以 JSON 格式保存到 `memory/pending/msg-<timestamp>-<type>.json`
-3. OpenClaw cron 系统检测到文件，通过 `message` 工具（WebSocket 长连接）发送到飞书
-4. Agent 无需管理 WebSocket 连接，也不需要配置 Webhook URL
+### 4. 日报生成与发送（次日 07:55）
 
-### 5. 发送日报（次日 07:58）
-
-1. OpenClaw 的 cron 系统检测到 `memory/pending/DailyReport-YYYY-MM-DD.md` 文件
-2. 通过 `message` 工具将日报内容发送至飞书
-3. 无需手动管理 webhook，完全自动化
+1. 读取前一天所有辅助缓存文件（体重、三餐、Garmin）
+2. 按照 `templates/daily-report.md` 格式生成日报
+3. 发送给用户
+4. 等待用户确认后归档 + 清理辅助文件
+5. **用户未确认前，绝不删除辅助文件**
 
 ---
 
@@ -136,15 +133,28 @@
 
 ## ⚠️ 收尾规则
 
-**触发时机：日报已发送至飞书且用户回复「确认」后**
+**触发时机：日报已发送至飞书且用户回复「确认」/「存档」/「存吧」后**
 
-1. 将 `DailyReport-YYYY-MM-DD.md` 复制到 `memory/reports/` 归档
-2. 删除同一日期的所有辅助文件（不依赖 cron）：
-   - `Garmin-YYYY-MM-DD.json`
-   - `*scale.json`
-   - `*breakfast.json`、`*lunch.json`、`*dinner.json`、`*snack.json`
-   - `DailyReport-YYYY-MM-DD.md`（移到 reports 后原位置删除）
-3. 08:10 兜底检查：若发现已确认日报对应的辅助文件仍有残留，直接清理
+1. 将日报复制到 `memory/reports/YYYY-MM-DD.md` 归档
+2. 删除同一日期的所有辅助文件：
+   - `Garmin-YYYY-MM-DD.md`
+   - `morning-scale-YYYY-MM-DD.md`
+   - `evening-scale-YYYY-MM-DD.md`
+   - `breakfast-YYYY-MM-DD.md`
+   - `lunch-YYYY-MM-DD.md`
+   - `dinner-YYYY-MM-DD.md`
+   - `YYYY-MM-DD.md`（日报原文件，已归档到 reports/）
+3. 08:10 兜底检查：若发现已归档日报对应的辅助文件仍有残留，直接清理
+
+**⚠️ 用户未确认前，绝不删除辅助文件。**
+
+## ⛔ 禁止事项
+
+1. **禁止生成"检查清单状态"类消息** — 不生成带有 ✅❌🧹📊 emoji 的状态列表
+2. **禁止在没有用户确认的情况下删除辅助文件**
+3. **禁止使用绝对路径**
+4. **禁止操作其他 agent 的 workspace**
+5. **Heartbeat 已永久禁用** — 所有定时任务由 cron 管理
 
 ## 数据存储路径
 
@@ -152,16 +162,16 @@
 
 ```
 memory/
-├── MEMORY.md              # 长期记忆
-├── pending/               # 当天待处理数据
-│   ├── YYYY-MM-DD-morning-scale.json
-│   ├── YYYY-MM-DD-evening-scale.json
-│   ├── YYYY-MM-DD-breakfast.json
-│   ├── YYYY-MM-DD-lunch.json
-│   ├── YYYY-MM-DD-dinner.json
-│   ├── Garmin-YYYY-MM-DD.json
-│   └── DailyReport-YYYY-MM-DD.md  # 待发送日报
-└── reports/               # 已归档日报
+├── MEMORY.md                         # 长期记忆
+├── pending/                          # 当天待处理数据（缓存文件）
+│   ├── morning-scale-YYYY-MM-DD.md   # 早晨体重
+│   ├── evening-scale-YYYY-MM-DD.md   # 晚间体重
+│   ├── breakfast-YYYY-MM-DD.md       # 早餐
+│   ├── lunch-YYYY-MM-DD.md          # 午餐
+│   ├── dinner-YYYY-MM-DD.md         # 晚餐
+│   ├── Garmin-YYYY-MM-DD.md         # Garmin 数据
+│   └── YYYY-MM-DD.md               # 待确认日报
+└── reports/                          # 已归档日报
     └── YYYY-MM-DD.md
 ```
 

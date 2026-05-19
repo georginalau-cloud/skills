@@ -950,6 +950,15 @@ def _build_daily_prompt(base_chart: dict, day_chart: dict, wuyu: dict) -> dict:
         has_he     = any(i['type'] == '合' for i in day_zhi_interacts)
         has_sanhe  = any(i['type'] == '三合' for i in day_zhi_interacts)
         yong_wuxing = STEM_WUXING.get(yong_shen, '') if len(yong_shen) == 1 else ''
+
+        # 获取完整的 zhi_relations 结果（含力量权重），用于幸运色力量判断
+        _daily_rel_result = None
+        try:
+            from lib.zhi_relations import analyze_zhi_relations as _azr
+            _daily_rel_result = _azr(liuri_gz_zhi, frozenset(combined_zhis)) if liuri_gz_zhi else None
+        except Exception:
+            pass
+
         lucky_result = _compute_lucky(
             day_gan,
             day_gan_shishen=day_gan_shishen,
@@ -962,7 +971,10 @@ def _build_daily_prompt(base_chart: dict, day_chart: dict, wuyu: dict) -> dict:
             has_xing=has_xing,
             has_he=has_he,
             has_sanhe=has_sanhe,
-            day_analysis={},  # 不依赖评分，用十神+刑冲就够了
+            day_analysis={},
+            relations=_daily_rel_result,
+            ji_shen=ji_shen,
+            xi_shen=yong_info.get('xi_shen', []) if yong_info else [],
         )
         base_colors = LUCKY_COLORS.get(yong_shen, [])
         lucky_colors_dynamic = '、'.join(_merge_lucky_colors(base_colors, lucky_result['add_colors'], lucky_result['avoid_colors']))

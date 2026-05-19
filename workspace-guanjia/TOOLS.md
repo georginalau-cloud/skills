@@ -2,52 +2,26 @@
 
 _我的工具小抄本，记录当前配置和所有能力。_
 
-## 已安装的 Skills（available 目录，41个）
+## 已安装的 Skills（skills/available，16个）
 
 | 技能 | 功能 | 状态 |
 |------|------|------|
-| feishu-doc | 飞书文档读写 | ✅ |
-| feishu-drive | 飞书云盘管理 | ✅ |
-| feishu-perm | 飞书权限管理 | ✅ |
-| feishu-wiki | 飞书知识库 | ✅ |
-| 1password | 1Password CLI | ⚠️ CLI未装 |
-| apple-notes | Apple Notes | ✅ |
-| apple-reminders | 提醒事项 | ✅ |
-| bear-notes | Bear 笔记 | ⚠️ CLI未装 |
-| camsnap | 摄像头截图 | ✅ |
-| canvas | Canvas 控制 | ✅ |
-| clawhub | 技能市场 | ✅ |
-| coding-agent | 编码任务代理 | ⚠️ Codex未装 |
-| discord | Discord 管理 | ⚠️ CLI未装 |
-| gemini | Gemini CLI | ✅ |
-| gh-issues | GitHub Issues 自动修复 | ✅ |
-| gifgrep | GIF 搜索 | ✅ |
+| clawhub | 技能市场（安装/搜索 skill） | ✅ |
+| coding-agent | 编码任务代理 | ✅ |
+| flightclaw | 机票搜索引擎 | ✅ |
 | github | GitHub 操作 | ✅ |
-| gog | Google Workspace | ⚠️ CLI未装 |
+| gog | Google Workspace | ✅ |
 | healthcheck | 安全审计 | ✅ |
-| himalaya | 邮件管理 | ✅ |
-| imsg | iMessage | ✅ |
-| mcporter | MCP 服务管理 | ⚠️ MCP未配 |
-| model-usage | 模型用量统计 | ✅ |
 | nano-pdf | PDF 编辑 | ✅ |
-| node-connect | 节点连接诊断 | ✅ |
-| notion | Notion 集成 | ⚠️ CLI未装 |
-| obsidian | Obsidian 知识库 | ✅ |
+| notion | Notion 集成 | ✅ |
 | openai-image-gen | 图片生成 | ✅ |
-| openai-whisper | 本地语音转文字 | ✅ |
-| openai-whisper-api | API 语音转文字 | ✅ |
-| openclaw-skills-eastmoney-stock | 东方财富股票 | ✅ |
-| oracle | Prompt 工程化 | ⚠️ CLI未装 |
+| openclaw-skills-eastmoney | 东方财富股票数据 | ✅ |
 | session-logs | 会话日志分析 | ✅ |
 | skill-creator | 技能创建 | ✅ |
-| slack | Slack 管理 | ⚠️ CLI未装 |
 | summarize | URL/音视频摘要 | ✅ |
-| things-mac | Things 3 任务 | ⚠️ CLI未装 |
-| tmux | 会话自动化 | ⚠️ CLI未装 |
-| trending-now | 趋势监控 | ✅ |
+| tmux | 会话自动化 | ✅ |
 | video-frames | 视频帧提取 | ✅ |
 | weather | 天气查询 | ✅ |
-| xurl | X (Twitter) API | ⚠️ CLI未装 |
 
 ## Workspace Skills（workspace-guanjia/skills，9个）
 

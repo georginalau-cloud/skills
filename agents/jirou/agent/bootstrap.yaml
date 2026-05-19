@@ -2,20 +2,34 @@ name: jirou
 description: 肌肉 - 健身健康助手
 heartbeat:
   enabled: false
-  intervalMinutes: 30
 cron:
-  - name: 早安体重
+  - name: 抓取Garmin昨日数据
+    schedule: "0 6 * * *"
+    description: 06:00 抓取昨日(D-1) Garmin 数据
+  - name: 检查昨日Garmin文件
+    schedule: "0 7 * * *"
+    description: 07:00 兜底检查，06:00失败则补抓
+  - name: 形成昨日日报
+    schedule: "55 7 * * *"
+    description: 07:55 生成+发送昨日日报，等用户确认后归档清理
+  - name: 早安体重提醒
     schedule: "0 8 * * *"
-    description: 早上8点记录体重
+    description: 08:00 提醒今日早晨称重
+  - name: 日报自愈检查
+    schedule: "10 8 * * *"
+    description: 08:10 检查昨日日报是否正常生成
+  - name: 问早餐
+    schedule: "0 10 * * *"
+    description: 10:00 提醒记录今日早餐
   - name: 问午餐
-    schedule: "0 14 * * *"
-    description: 中午14点问午餐
+    schedule: "0 12 * * *"
+    description: 12:00 提醒记录今日午餐
   - name: 问晚餐
     schedule: "30 19 * * *"
-    description: 晚上19:30问晚餐
-  - name: 晚间体重
+    description: 19:30 提醒记录今日晚餐
+  - name: 检查Garmin Token
+    schedule: "0 21 * * *"
+    description: 21:00 检查token能否撑到明早07:00
+  - name: 晚间体重提醒
     schedule: "0 22 * * *"
-    description: 晚上10点记录体重
-  - name: Garmin同步
-    schedule: "59 23 * * *"
-    description: 晚上11:59同步Garmin数据
+    description: 22:00 提醒今日晚间称重

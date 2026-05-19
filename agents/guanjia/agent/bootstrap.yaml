@@ -2,11 +2,17 @@ name: guanjia
 description: 管家 - 通用助手与协调者
 heartbeat:
   enabled: true
+  description: 轻量检查其他agent异常状态，有问题才通知
 cron:
   - name: 日记
     schedule: "0 22 * * *"
-    description: 每天晚上22点写日记
-  - name: 机票监控
+    description: 每天22:00写日记，发飞书等确认后存档
+  - name: 清理media
+    schedule: "59 23 * * *"
+    description: 每天23:59清理前一天及之前的media文件
+  - name: 机票监控(上海-首尔)
     schedule: "0 9 * * *"
-    description: 每天早上9点监控机票价格
-
+    description: 每天09:00查周四出发周日回的低价机票(≤1500元)
+  - name: 机票监控(上海-曼谷)
+    schedule: "30 9 * * *"
+    description: 每天09:30查周四出发周日回的低价机票(≤1500元)

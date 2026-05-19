@@ -1,0 +1,65 @@
+{
+  "_comment": "统一持仓数据源 — 所有 skill 从此文件读取，调仓后只需更新这一个文件",
+  "_updated": "2026-05-19",
+  
+  "stocks": {
+    "300896": {"name": "爱美客",   "shares": 420,  "cost": 478.847, "sector": "医美"},
+    "600309": {"name": "万华化学", "shares": 300,  "cost": 88.690,  "sector": "化工"},
+    "600352": {"name": "浙江龙盛", "shares": 1000, "cost": 12.924,  "sector": "化工"},
+    "688363": {"name": "华熙生物", "shares": 300,  "cost": 238.043, "sector": "医美"},
+    "002176": {"name": "江特电机", "shares": 1000, "cost": 25.506,  "sector": "新能源"},
+    "002172": {"name": "澳洋健康", "shares": 2000, "cost": 6.530,   "sector": "医美"},
+    "000652": {"name": "泰达股份", "shares": 1000, "cost": 10.105,  "sector": "地产"},
+    "002551": {"name": "尚荣医疗", "shares": 1000, "cost": 4.600,   "sector": "医疗"},
+    "600221": {"name": "海航控股", "shares": 1000, "cost": 6.236,   "sector": "航空"}
+  },
+
+  "etfs": {
+    "516650": {"name": "有色金属ETF",     "shares": 8000, "cost": 2.449, "sector": "有色金属"},
+    "159566": {"name": "储能电池ETF易方达", "shares": 3000, "cost": 2.085, "sector": "新能源"},
+    "161725": {"name": "招商中证白酒A",    "shares": 5000, "cost": 1.355, "sector": "白酒"},
+    "400201": {"name": "海投5",           "shares": 3000, "cost": 0.750, "sector": "海外"}
+  },
+
+  "funds": {
+    "166002": {"name": "中欧新蓝筹A",           "shares": 37630.83,  "cost": 2.3199, "type": "A股主动型"},
+    "006751": {"name": "富国互联科技A",          "shares": 23739.17,  "cost": 2.9683, "type": "A股主动型"},
+    "163402": {"name": "兴全趋势投资",           "shares": 134513.34, "cost": 0.7324, "type": "A股主动型"},
+    "004477": {"name": "嘉实沪港深回报",          "shares": 35096.95,  "cost": 1.7096, "type": "沪港深"},
+    "001371": {"name": "富国沪港深价值精选A",     "shares": 33887.86,  "cost": 1.5485, "type": "沪港深"},
+    "166005": {"name": "中欧价值发现A",          "shares": 11491.47,  "cost": 2.5236, "type": "A股主动型"},
+    "160706": {"name": "沪深300LOF",            "shares": 18541.19,  "cost": 1.0631, "type": "A股指数型"},
+    "001668": {"name": "汇添富全球移动互联A",     "shares": 4206.06,   "cost": 3.4530, "type": "QDII"},
+    "000979": {"name": "景顺长城沪港深精选A",     "shares": 4638.32,   "cost": 2.6598, "type": "沪港深"},
+    "118001": {"name": "易方达亚洲精选",          "shares": 5978.46,   "cost": 1.3381, "type": "QDII"},
+    "004965": {"name": "泓德致远混合A",          "shares": 2415.48,   "cost": 2.0700, "type": "A股主动型"},
+    "450009": {"name": "国富中小盘A",            "shares": 1706.26,   "cost": 2.9304, "type": "A股主动型"},
+    "519069": {"name": "汇添富价值精选A",        "shares": 1127.23,   "cost": 4.4357, "type": "A股主动型"},
+    "006113": {"name": "汇添富创新医药A",        "shares": 1508.31,   "cost": 3.3150, "type": "A股主动型"}
+  },
+
+  "data_sources": {
+    "_comment": "数据源优先级配置",
+    "a_stock_price": {
+      "P1": "push2.eastmoney.com（东方财富，最准确）",
+      "P2": "qt.gtimg.cn（腾讯财经，无需API Key）",
+      "P3": "akshare stock_zh_a_spot_em()（批量全A股）",
+      "P4": "hq.sinajs.cn（新浪，最后兜底，可能限流）"
+    },
+    "hk_us_stock_price": {
+      "P1": "qt.gtimg.cn（腾讯财经，港股hk+美股us前缀）",
+      "P2": "query1.finance.yahoo.com（Yahoo Finance）",
+      "P3": "push2.eastmoney.com（东方财富，港股116.前缀）"
+    },
+    "fund_nav": {
+      "P1": "fundgz.1234567.com.cn（天天基金盘中估值）",
+      "P2": "fundmobapi.eastmoney.com（天天基金批量GSZ）",
+      "P3": "api.fund.eastmoney.com/f10/lsjz（QDII基金历史净值）"
+    },
+    "forex": {
+      "P1": "hq.sinajs.cn（新浪外汇）",
+      "P2": "push2.eastmoney.com（东方财富外汇）",
+      "P3": "akshare currency_boc_safe()（中行牌价）"
+    }
+  }
+}

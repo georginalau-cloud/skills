@@ -2,9 +2,9 @@
   "version": 1,
   "jobs": [
     {
-      "id": "edb2e8df-78a5-4b4f-8217-043a1a1750d3",
+      "id": "jirou-0600-garmin-fetch",
       "agentId": "jirou",
-      "name": "肌肉-06:00 Garmin兜底补抓",
+      "name": "肌肉-06:00抓取Garmin昨日数据",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -15,7 +15,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 memory/pending/ 下是否已有昨天的 Garmin 数据文件（文件名含 Garmin- 加昨天日期）。\n\n如果已有：直接退出，不做任何操作，不发任何消息。\n如果没有：说明昨晚 23:59 的抓取失败了，立即补抓：\n  TODAY=$(date +%Y-%m-%d)\n  YESTERDAY=$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d yesterday +%Y-%m-%d)\n  gccli activities --date $YESTERDAY --json > memory/pending/Garmin-$YESTERDAY.json\n  gccli steps --date $YESTERDAY --json >> memory/pending/Garmin-$YESTERDAY.json\n  gccli health sleep --date $YESTERDAY --json >> memory/pending/Garmin-$YESTERDAY.json\n  gccli heartrate --date $YESTERDAY --json >> memory/pending/Garmin-$YESTERDAY.json\n补抓完成后静默，不发消息。",
+        "message": "抓取昨日(D-1)的 Garmin 数据。用 Python 脚本抓取昨天的完整 Garmin 数据（活动、步数、睡眠、心率、HRV、BMR），生成结构化文件保存到 memory/pending/Garmin-{{YESTERDAY}}.md。\n\n抓取完成后静默，不发消息。失败时记录错误到 memory/pending/Garmin-error.txt，不发消息。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
         "timeoutSeconds": 300
       },
       "delivery": {
@@ -32,22 +32,45 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778968800000,
-        "lastRunAtMs": 1778882400008,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 174768,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778882574776
+      "state": {}
     },
     {
-      "id": "037aab09-867e-435c-83fa-203d08bd7575",
+      "id": "jirou-0700-garmin-check",
       "agentId": "jirou",
-      "name": "肌肉-07:55发送前一日日报",
+      "name": "肌肉-07:00检查昨日Garmin文件",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 7 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "检查 memory/pending/ 下是否已有昨天的 Garmin 数据文件 Garmin-{{YESTERDAY}}.md。\n\n如果已有：直接静默退出，不做任何操作，不发任何消息。\n如果没有：说明 06:00 的抓取失败了，立即补抓昨日 Garmin 数据，保存到 memory/pending/Garmin-{{YESTERDAY}}.md。\n\n补抓完成后静默，不发消息。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
+        "timeoutSeconds": 300
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "feishu",
+        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
+        "accountId": "jirou",
+        "bestEffort": true
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
+        "accountId": "jirou",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "jirou-0755-daily-report",
+      "agentId": "jirou",
+      "name": "肌肉-07:55形成昨日日报",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -58,8 +81,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "发送前一日健康日报：\n1. 读取 memory/pending/DailyReport-{{YESTERDAY}}.md\n2. 如不存在，回复「昨日日报未生成，请检查」后退出\n3. 如存在，发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）\n4. 等待用户回复「确认」或「存档」\n5. 收到确认后：\n   a. 将日报复制到 memory/reports/{{YESTERDAY}}.md\n   b. 删除 memory/pending/ 下所有含昨天日期的文件（体重、饮食、Garmin、日报等）\n   c. 回复「已存档，昨日数据已清理 ✅」\n\n注意：只操作肌肉自己的 workspace，不涉及其他 agent。",
-        "timeoutSeconds": 300
+        "message": "形成并发送昨日(D-1)健康日报：\n\n1. 读取 memory/pending/ 下昨天日期的所有辅助缓存文件：\n   - morning-scale-{{YESTERDAY}}.md（早晨体重）\n   - evening-scale-{{YESTERDAY}}.md（晚间体重）\n   - breakfast-{{YESTERDAY}}.md（早餐）\n   - lunch-{{YESTERDAY}}.md（午餐）\n   - dinner-{{YESTERDAY}}.md（晚餐）\n   - Garmin-{{YESTERDAY}}.md（Garmin数据）\n\n2. 按照 templates/daily-report.md 的格式，汇总生成昨日日报，命名为 {{YESTERDAY}}.md，保存到 memory/pending/{{YESTERDAY}}.md\n\n3. 将日报内容发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）\n\n4. 等待用户回复「确认」或「存档」或「存吧」\n\n5. 收到确认后：\n   a. 将日报复制到 memory/reports/{{YESTERDAY}}.md 归档\n   b. 删除 memory/pending/ 下所有含昨天日期的辅助文件（morning-scale、evening-scale、breakfast、lunch、dinner、Garmin、日报原文件）\n   c. 回复「已归档 ✅」\n\n⚠️ 重要：如果用户没有确认，就一直等着，绝不能删除昨日的辅助文件，直到用户确认为止。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
+        "timeoutSeconds": 600
       },
       "delivery": {
         "mode": "announce",
@@ -74,22 +97,12 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778975700000,
-        "lastRunAtMs": 1778889300009,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 15997,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778889316006
+      "state": {}
     },
     {
-      "id": "jirou-morning-scale",
+      "id": "jirou-0800-morning-scale",
       "agentId": "jirou",
-      "name": "肌肉-08:00早安体重提醒",
+      "name": "肌肉-08:00今日早安及体重提醒",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -100,7 +113,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 memory/pending/ 下是否已有今天早晨体重记录（文件名含 morning-scale 或 weight，日期为今天）。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「☀️ 早安！请发送今天早晨的有品秤截图，我来记录体重数据。」\n\n收到截图后：调用 ocr-scale skill 识别，将结果保存到 memory/pending/{{TODAY}}-morning-scale.json，回复识别结果给用户确认。",
+        "message": "检查 memory/pending/ 下是否已有今天早晨体重记录 morning-scale-{{TODAY}}.md。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「☀️ 早安！请发送今天早晨的有品秤截图，我来记录体重数据。」\n\n收到截图后：调用 ocr-scale skill 识别，将结果保存到 memory/pending/morning-scale-{{TODAY}}.md，回复识别结果给用户确认。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
         "timeoutSeconds": 600
       },
       "delivery": {
@@ -117,22 +130,45 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778976000000,
-        "lastRunAtMs": 1778889600013,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 140423,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778889740436
+      "state": {}
     },
     {
-      "id": "d421c372-9c22-4b62-a2e6-4bcd49161935",
+      "id": "jirou-0810-selfheal",
       "agentId": "jirou",
-      "name": "肌肉-10:00问早餐",
+      "name": "肌肉-08:10昨日日报自愈检查",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 8 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "系统自检（无需通知用户，除非补救失败）：\n\n1. 检查 memory/pending/{{YESTERDAY}}.md 或 memory/reports/{{YESTERDAY}}.md 是否存在\n   - reports/ 中存在 → 一切正常，静默退出\n   - pending/ 中存在但 reports/ 中不存在 → 说明 07:55 已生成但用户未确认，静默退出（等用户确认）\n   - 两处都不存在 → 尝试重新生成日报并发送\n\n2. 只有在补救失败时才发消息通知用户\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
+        "timeoutSeconds": 300
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "feishu",
+        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
+        "accountId": "jirou",
+        "bestEffort": true
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
+        "accountId": "jirou",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "jirou-1000-breakfast",
+      "agentId": "jirou",
+      "name": "肌肉-10:00今日问早餐",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -143,7 +179,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 memory/pending/ 下是否已有今天早餐记录（文件名含 breakfast，日期为今天）。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🍳 早餐时间到！请发送早餐照片或描述，我来帮你计算热量。」\n\n收到后：调用 food-recognition skill 识别，将结果保存到 memory/pending/{{TODAY}}-breakfast.json，回复热量信息给用户确认。",
+        "message": "检查 memory/pending/ 下是否已有今天早餐记录 breakfast-{{TODAY}}.md。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🍳 早餐吃了什么？请发送早餐照片或描述，我来帮你计算热量。」\n\n收到后：识别食物 → 在 USDA 查询热量 → 将结果保存到 memory/pending/breakfast-{{TODAY}}.md，回复热量信息给用户确认。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
         "timeoutSeconds": 600
       },
       "delivery": {
@@ -160,22 +196,12 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778983200000,
-        "lastRunAtMs": 1778896800009,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 119765,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778896919774
+      "state": {}
     },
     {
-      "id": "e01d929a-d8e0-4705-85d8-2781e447d193",
+      "id": "jirou-1200-lunch",
       "agentId": "jirou",
-      "name": "肌肉-12:00问午餐",
+      "name": "肌肉-12:00今日问午餐",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -186,7 +212,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 memory/pending/ 下是否已有今天午餐记录（文件名含 lunch，日期为今天）。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🍱 午餐时间到！请发送午餐照片或描述，我来帮你计算热量。」\n\n收到后：调用 food-recognition skill 识别，将结果保存到 memory/pending/{{TODAY}}-lunch.json，回复热量信息给用户确认。",
+        "message": "检查 memory/pending/ 下是否已有今天午餐记录 lunch-{{TODAY}}.md。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🍱 午餐吃了什么？请发送午餐照片或描述，我来帮你计算热量。」\n\n收到后：识别食物 → 在 USDA 查询热量 → 将结果保存到 memory/pending/lunch-{{TODAY}}.md，回复热量信息给用户确认。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
         "timeoutSeconds": 600
       },
       "delivery": {
@@ -203,22 +229,12 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778990400000,
-        "lastRunAtMs": 1778904000011,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 142535,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778904142546
+      "state": {}
     },
     {
-      "id": "b449d0a8-a443-474e-8907-d3930b193a47",
+      "id": "jirou-1930-dinner",
       "agentId": "jirou",
-      "name": "肌肉-19:30问晚餐",
+      "name": "肌肉-19:30今日问晚餐",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -229,7 +245,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 memory/pending/ 下是否已有今天晚餐记录（文件名含 dinner，日期为今天）。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🍜 晚餐时间到！请发送晚餐照片或描述，我来帮你计算热量。」\n\n收到后：调用 food-recognition skill 识别，将结果保存到 memory/pending/{{TODAY}}-dinner.json，回复热量信息给用户确认。",
+        "message": "检查 memory/pending/ 下是否已有今天晚餐记录 dinner-{{TODAY}}.md。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🍜 晚餐吃了什么？请发送晚餐照片或描述，我来帮你计算热量。」\n\n收到后：识别食物 → 在 USDA 查询热量 → 将结果保存到 memory/pending/dinner-{{TODAY}}.md，回复热量信息给用户确认。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
         "timeoutSeconds": 600
       },
       "delivery": {
@@ -246,63 +262,10 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778931000000,
-        "lastRunAtMs": 1778844600009,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 217590,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778844817599
+      "state": {}
     },
     {
-      "id": "26f8cd3e-3c31-4a50-b164-e1f4b35362bd",
-      "agentId": "jirou",
-      "name": "肌肉-22:00晚间体重提醒",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 22 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "检查 memory/pending/ 下是否已有今天晚间体重记录（文件名含 evening-scale，日期为今天）。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🌙 睡前体重记录时间～请发送今晚的有品秤截图 📊」\n\n收到截图后：调用 ocr-scale skill 识别，将结果保存到 memory/pending/{{TODAY}}-evening-scale.json，回复识别结果给用户确认。",
-        "timeoutSeconds": 600
-      },
-      "delivery": {
-        "mode": "none",
-        "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
-        "bestEffort": true
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1778940000000,
-        "lastRunAtMs": 1778853600011,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 173811,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778853773822
-    },
-    {
-      "id": "jirou-garmin-token-check",
+      "id": "jirou-2100-garmin-token",
       "agentId": "jirou",
       "name": "肌肉-21:00检查Garmin Token",
       "enabled": true,
@@ -315,7 +278,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 Garmin Token 状态：运行 gccli auth status\n\n如果 Token 正常：静默退出，不发任何消息。\n如果 Token 已过期或即将过期：立即发送提醒给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n\n「⚠️ Garmin 授权需要更新\n\ngccli 的访问令牌已过期，今晚 23:59 的数据抓取会失败。\n\n请现在在 MacBook 终端运行：\ngccli auth login georginalau@163.com\n\n在弹出的浏览器中完成登录后回复我「已授权」。」\n\n收到「已授权」后：回复「✅ 已确认，今晚 23:59 将正常抓取 Garmin 数据。」",
+        "message": "检查 Garmin Token 状态：运行 gccli auth status\n\n判断标准：token 是否能保证到明天(D+1) 07:00 仍有效（即能在明早 06:00 正常抓取今日数据）。\n\n如果 Token 有效期充足：静默退出，不发任何消息。\n如果 Token 已过期或将在明早 07:00 前过期：发送提醒给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n\n「⚠️ Garmin 授权需要更新\n\ngccli 的访问令牌即将过期，明早 06:00 的数据抓取会失败。\n\n请在 MacBook 终端运行：\ngccli auth login georginalau@163.com\n\n完成后回复我「已授权」。」\n\n收到「已授权」后：回复「✅ 已确认，明早将正常抓取 Garmin 数据。」\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
         "timeoutSeconds": 300
       },
       "delivery": {
@@ -332,235 +295,12 @@
         "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778936400000,
-        "lastRunAtMs": 1778850000008,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 174487,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778850174495
+      "state": {}
     },
     {
-      "id": "9252faa1-b259-468e-9cdd-f3d9fa474663",
+      "id": "jirou-2200-evening-scale",
       "agentId": "jirou",
-      "name": "肌肉-23:59抓取Garmin数据",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "59 23 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "用 Python 抓取今日 Garmin 数据并保存为结构化 JSON（避免多 JSON 粘接问题）：\n\npython3 - << 'EOF'\nimport subprocess, json, os\nfrom datetime import datetime\n\ndate_str = datetime.now().strftime('%%Y-%%m-%%d')\nWORKSPACE = os.path.expanduser('~/.openclaw/workspace-jirou')\nDEST = os.path.join(WORKSPACE, 'memory', 'pending', f'Garmin-{date_str}.json')\n\ncmds = {\n    'activities': ['gccli', 'activities', 'search', '--start-date', date_str, '--end-date', date_str, '--json'],\n    'health_summary': ['gccli', 'health', 'summary', date_str, '--json'],\n    'steps': ['gccli', 'health', 'steps', 'daily', '--start', date_str, '--end', date_str, '--json'],\n    'sleep': ['gccli', 'health', 'sleep', date_str, '--json'],\n    'hrv': ['gccli', 'health', 'hrv', date_str, '--json'],\n    'vo2max': ['gccli', 'health', 'max-metrics', date_str, '--json'],\n}\n\nresult = {'date': date_str, 'captured_at': datetime.now().isoformat()}\nfor key, cmd in cmds.items():\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)\n        if r.returncode == 0 and r.stdout.strip():\n            result[key] = json.loads(r.stdout)\n        else:\n            result[key] = {}\n    except:\n        result[key] = {}\n\nos.makedirs(os.path.dirname(DEST), exist_ok=True)\nwith open(DEST, 'w') as f:\n    json.dump(result, f, ensure_ascii=False, indent=2)\nEOF\n\n抓取完成后静默，不发消息。失败时记录错误到 memory/pending/Garmin-error.txt，不发消息。",
-        "timeoutSeconds": 300
-      },
-      "delivery": {
-        "mode": "none",
-        "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
-        "bestEffort": true
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1778947140000,
-        "lastRunAtMs": 1778860740010,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 28710,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0,
-        "lastDelivered": false
-      },
-      "updatedAtMs": 1778860768720
-    },
-    {
-      "id": "jirou-daily-report-gen",
-      "agentId": "jirou",
-      "name": "肌肉-00:05生成前一日日报",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "5 0 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "生成昨日健康日报：\n1. 读取 memory/pending/ 下所有昨天的数据文件（体重、三餐、Garmin）\n2. 按照workspace-jirou/templates/daily-report.md的格式，汇总生成完整日报，保存到 memory/pending/DailyReport-{{YESTERDAY}}.md\n3. 静默完成，不发消息（日报将在明早 07:55 由 cron 发送给用户）\n\n注意：只操作肌肉自己的 workspace，不涉及其他 agent。",
-        "timeoutSeconds": 600
-      },
-      "delivery": {
-        "mode": "none",
-        "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
-        "bestEffort": true
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1778947500000,
-        "lastRunAtMs": 1778861100009,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 148452,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778861248461
-    },
-    {
-      "id": "b229aa71-be41-4653-b0a1-0b4026b812c5",
-      "agentId": "zhaocai",
-      "name": "招财-晨报",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "30 8 * * 1-5",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "生成今日A股晨报。内容包括：\n1. 昨日大盘收盘情况回顾（沪深300、上证、深证、创业板）\n2. 昨日收盘后重要异动和消息面梳理\n3. 今日开盘展望与关注点\n4. 持仓相关板块今日关注提示\n\n风格参考专业投研机构或明星基金经理（如高毅、景林、中欧基金等）的晨报风格：简洁、有观点、有逻辑，不废话。\n\n重要前置判断：\n- 先确认今天是否为A股交易日（五一假期等节假日非交易日）\n- 非交易日：直接静默退出，不输出任何内容\n- 交易日才执行上述晨报生成逻辑\n\n生成后保存到 memory/pending/Morning-{{TODAY}}.txt，并通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。",
-        "timeoutSeconds": 600
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai"
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1779064200000,
-        "lastRunAtMs": 1778812203730,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 296114,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778812499844
-    },
-    {
-      "id": "04d3cc21-c61c-4ad8-9218-e3e4adad063d",
-      "agentId": "zhaocai",
-      "name": "招财-收盘总结",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 16 * * 1-5",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "生成今日A股收盘总结。内容精简聚焦：\n1. 今日大盘（沪深300/上证/创业板）涨跌幅 + 成交额\n2. 持仓个股今日涨跌幅（直接列数据，不废话）\n3. 今日核心驱动因素（1-2句话）\n4. 明日展望（1句话）\n\n风格：简洁、有数据、不废话。\n\n重要前置判断：\n- 先确认今天是否为A股交易日（五一假期等节假日非交易日）\n- 非交易日：直接静默退出，不输出任何内容\n- 交易日才执行上述收盘总结逻辑\n\n生成后保存到 memory/pending/Close-{{TODAY}}.txt，并通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n⚠️ 重要提醒：报告直接输出正文内容，不要在开头或结尾加「报告已发送至飞书」「messageId: xxx」「如无其他需要，静默退出」等系统通知式文字。直接出报告内容即可。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai"
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1779091200000,
-        "lastRunAtMs": 1778832000008,
-        "lastRunStatus": "error",
-        "lastStatus": "error",
-        "lastDurationMs": 542810,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 1,
-        "lastDelivered": true,
-        "lastError": "output new_sensitive (1027)"
-      },
-      "updatedAtMs": 1778832542818
-    },
-    {
-      "id": "c01e9564-8e05-4f1d-90a6-d3a295a487cb",
-      "agentId": "zhaocai",
-      "name": "招财-国际金融事件监控",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 8,12,18,22 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "## ⚠️ 幂等去重检查（必须第一个执行）\n在执行任何操作之前，先完成以下检查：\n\n```bash\njob_id=\"c01e9564-8e05-4f1d-90a6-d3a295a487cb\"\nhour_ts=$(date +%Y-%m-%d-%H)\nmarker_dir=\"~/.openclaw/workspace-zhaocai/memory/pending/cron-dedup\"\nmkdir -p \"$marker_dir\" 2>/dev/null\nmarker_file=\"$marker_dir/$job_id-$hour_ts\"\n\nif [ -f \"$marker_file\" ]; then\n    age=$(($(date +%s) - $(stat -f %m \"$marker_file\" 2>/dev/null || stat -c %Y \"$marker_file\" 2>/dev/null)))\n    if [ \"$age\" -lt 3900 ]; then\n        echo \"HEARTBEAT_OK\"\n        exit 0\n    fi\nfi\ntouch \"$marker_file\"\n```\n\n如果上述检查输出 `HEARTBEAT_OK` 并退出，表示本小时已执行过，直接退出不要重复发送。\n通过检查后，继续执行下面的任务。\n\n---\n\n## 幂等去重检查（勿删除）\nimport os, time\njob_id = \"c01e9564-8e05-4f1d-90a6-d3a295a487cb\"\nhour_ts = time.strftime(\"%Y-%m-%d-%H\")  # e.g. \"2026-05-10-08\"\nmarker_dir = os.path.expanduser(\"~/.openclaw/workspace-zhaocai/memory/pending/cron-dedup\")\nos.makedirs(marker_dir, exist_ok=True)\nmarker_file = os.path.join(marker_dir, f\"{job_id}-{hour_ts}\")\n# 如果标记文件已存在且小于65分钟，说明本次已执行过，直接退出\nif os.path.exists(marker_file):\n    age = time.time() - os.path.getmtime(marker_file)\n    if age < 3900:  # 65分钟内不重复执行\n        print(\"HEARTBEAT_OK\")\n        exit(0)\n# 否则创建标记文件，继续执行\nopen(marker_file, \"w\").close()\n\n搜索过去6小时内发生的重大国际金融事件（宏观政策、地缘冲突、金融市场波动）。\n\n报告命名规则：根据实际发送时间命名：\n- 08:00 发送 → 「国际金融事件晨报」\n- 12:00 发送 → 「国际金融事件午报」\n- 18:00 发送 → 「国际金融事件晚报」\n- 22:00 发送 → 「国际金融事件夜报」\n\n判断标准：影响范围广（全球/全国）、市场相关性高（A股/港股/美股）。\n\n如有重大事件：生成简要报告，通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n如无重大事件：静默退出，不发任何消息，不发空报告。\n\n⚠️ 重要提醒：报告直接输出正文内容，不要在开头或结尾加「报告已发送至飞书」「messageId: xxx」「如无其他需要，静默退出」等系统通知式文字。直接出报告内容即可。",
-        "timeoutSeconds": 120
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai"
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1778925600000,
-        "lastRunAtMs": 1778904142546,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 48536,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0,
-        "lastDelivered": true
-      },
-      "updatedAtMs": 1778904191082
-    },
-    {
-      "id": "192518ee-05ba-4d79-916a-309b948eb145",
-      "agentId": "zhaocai",
-      "name": "招财-抽取精华",
+      "name": "肌肉-22:00今日晚间体重提醒",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -571,117 +311,24 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "抽取今日投资精华内容，保存到 memory/pending/Pick-{{TODAY}}.txt，并通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n注意：只操作招财自己的 workspace，不涉及其他 agent。",
-        "timeoutSeconds": 300
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai"
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1778940000000,
-        "lastRunAtMs": 1778853893905,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 69764,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778853963669
-    },
-    {
-      "id": "d924c70f-ce5d-448b-8644-1ef32f4dd82c",
-      "agentId": "zhaocai",
-      "name": "招财-市场异动监控",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "*/30 8-15 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "## 任务：执行市场异动扫描\n\n**第一步：用 exec 工具执行以下命令（不是解读，是直接运行）：**\n```bash\ncd ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts && python3 scan_alert.py\n```\n\n**第二步：根据脚本输出判断：**\n- 如果脚本输出包含异动内容 → 通过 exec 工具调用飞书推送（`message action=send ...`）发给用户\n- 如果脚本输出为空或只有「扫描完成: 0 条异动」→ 静默退出，不发任何消息\n- **全程使用中文输出，不说英文**\n- **去重：检查 marker 文件是否存在（同小时已执行过则退出）**\n\n**去重命令（执行前先跑）：**\n```bash\njob_id=\"d924c70f-ce5d-448b-8644-1ef32f4dd82c\"\nhour_ts=$(date +%Y-%m-%d-%H)\nmarker_dir=\"~/.openclaw/workspace-zhaocai/memory/pending/cron-dedup\"\nmkdir -p \"$marker_dir\" 2>/dev/null\nmarker_file=\"$marker_dir/$job_id-$hour_ts\"\nif [ -f \"$marker_file\" ]; then\n    age=$(($(date +%s) - $(stat -f %m \"$marker_file\" 2>/dev/null || stat -c %Y \"$marker_file\" 2>/dev/null)))\n    if [ \"$age\" -lt 3900 ]; then\n        echo \"HEARTBEAT_OK\"\n        exit 0\n    fi\nfi\ntouch \"$marker_file\"\n```\n\n---\n",
-        "timeoutSeconds": 300
+        "message": "检查 memory/pending/ 下是否已有今天晚间体重记录 evening-scale-{{TODAY}}.md。\n\n如果已有：跳过，不发任何消息。\n如果没有：发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n「🌙 睡前体重记录时间～请发送今晚的有品秤截图」\n\n收到截图后：调用 ocr-scale skill 识别，将结果保存到 memory/pending/evening-scale-{{TODAY}}.md，回复识别结果给用户确认。\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
+        "timeoutSeconds": 600
       },
       "delivery": {
         "mode": "none",
         "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai"
+        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
+        "accountId": "jirou",
+        "bestEffort": true
       },
       "failureAlert": {
         "after": 3,
         "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai",
+        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
+        "accountId": "jirou",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778976000000,
-        "lastRunAtMs": 1778916600010,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 178772,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0,
-        "lastDelivered": false
-      },
-      "updatedAtMs": 1778916778782
-    },
-    {
-      "id": "f5213fdf-5435-4a4a-9ef9-0c3458a630e2",
-      "agentId": "zhaocai",
-      "name": "招财-每周基金持仓穿透更新",
-      "enabled": true,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 8 * * 1",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "执行基金持仓穿透更新：\npython3 /Users/georginalau/.openclaw/workspace-zhaocai/skills/market-alert/scripts/update_fund_holdings.py\n\n完成后通过飞书发送更新结果给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n注意：只操作招财自己的 workspace，不涉及其他 agent。",
-        "timeoutSeconds": 300
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai"
-      },
-      "failureAlert": {
-        "after": 3,
-        "channel": "feishu",
-        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
-        "accountId": "zhaocai",
-        "cooldownMs": 3600000
-      },
-      "state": {
-        "nextRunAtMs": 1779062400000,
-        "lastRunAtMs": 1778457928693,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 27461,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778457956154
+      "state": {}
     },
     {
       "id": "56e0df35-9ffa-4287-a699-f31466d6631d",
@@ -697,8 +344,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "现在是晚上22:00，请撰写今日日记。\n\n内容要求：\n1. 今天自己做了什么、帮用户处理了什么事\n2. 关注其他 agent 们今天的运行情况（可查看 logs/ 或各 workspace 的 memory/pending/）\n3. 今天发生的重大社会新闻、国内外大事（用 web_search 搜索）\n4. 对以上事件的感想和思考\n\n文风：平实但掷地有声，偶尔 self-deprecating，不煽情，不祥林嫂。\n\n写完后通过飞书发送给用户（open_id: ou_e62c3623b382df683370c131baf8f4c8，accountId: guanjia），等待用户回复「存吧」或「确认」后保存到 memory/{{TODAY}}.md。\n\n注意：只操作管家自己的 workspace，不涉及其他 agent 的数据。",
-        "timeoutSeconds": 900
+        "message": "现在是晚上22:00，请撰写今日日记。\n\n⚠️ 重要规则：\n- 不要编造任何内容，只写你确实知道的事实\n- 不要写敏感政治内容、领导人姓名、具体政策批评\n- 社会新闻只写客观事实摘要，不做政治评论\n- 如果某项内容你不确定，写\"今日未获取到相关信息\"而非编造\n\n内容要求：\n1. 今天自己做了什么（查看自己的 session 记录和 memory/pending/ 目录）\n2. 其他 agent 运行情况（检查各 workspace 的 memory/pending/ 目录文件变化）\n3. 今天发生的重大新闻（用 web_search 搜索\"今日要闻\"，只取事实标题，不评论政治）\n4. 简短感想（1-2句，关于自己的成长或反思，不涉及政治）\n\n文风：平实简洁，有自知之明。不煽情，不祥林嫂，不假大空。\n\n写完后通过飞书发送给用户（open_id: ou_e62c3623b382df683370c131baf8f4c8，accountId: guanjia）。\n等待用户回复「存吧」或「确认」后保存到 memory/{{TODAY}}.md。\n\n⛔ 禁止：\n- 禁止编造不存在的事件或对话\n- 禁止写涉及国家领导人、政治敏感话题的评论\n- 禁止写超过500字的日记（简洁为上）",
+        "timeoutSeconds": 300
       },
       "delivery": {
         "mode": "announce",
@@ -713,17 +360,7 @@
         "accountId": "guanjia",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778940000000,
-        "lastRunAtMs": 1778853963669,
-        "lastRunStatus": "error",
-        "lastStatus": "error",
-        "lastDurationMs": 112410,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 2,
-        "lastError": "output new_sensitive (1027)"
-      },
+      "state": {},
       "updatedAtMs": 1778854076079
     },
     {
@@ -740,9 +377,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是算命喵，今日要为沛柔生成日运早安推送。请严格按以下流程执行：\n\n第一步：调 bazi 脚本获取今日数据，命令：\n/opt/homebrew/bin/python3 ~/.openclaw/workspace-suanming/skills/suanming-bazi-analyzer/bin/bazi --year 1990 --month 1 --day 8 --hour 14 --minute 54 --gender female --city 西安 --mode daily --liuyear %Y --liuyue-month %-m --liuri-date %Y-%m-%d\n\n第二步：用脚本输出数据做 self-verify，核验：十神判断、刑冲合来源、幸运色/喜神/财神方位是否与输出一致。不脑补，不照抄上一次推送。\n\n第三步：按 SOUL.md 日运格式输出，加粗脚本数据+普通字体本喵解读，末尾署名算命喵。\n\n第四步：发送消息给沛柔，飞书 open_id：ou_f9095feb1adeb3f3997725460bcdd87d\n\n禁止：不调用脚本就输出十神判断，不照搬上次推送内容。",
-        "timeoutSeconds": 120,
-        "thinking": "high"
+        "message": "执行每日日运推送。严格按以下步骤执行，禁止跳步。\n\n## 第一步：调用 bazi 脚本获取今日数据\n\n运行命令（必须完整执行，不可省略任何参数）：\n```\n/opt/homebrew/bin/python3 ~/.openclaw/workspace-suanming/skills/suanming-bazi-analyzer/bin/bazi --year 1990 --month 1 --day 8 --hour 14 --minute 54 --gender female --city 西安 --mode daily --liuyear $(date +%Y) --liuri-date $(date +%Y-%m-%d)\n```\n\n注意：不传 --liuyue-month，让脚本根据 --liuri-date 自动推算所在流月。\n\n## 第二步：读取脚本输出的 JSON\n\n从 JSON 输出中提取以下字段（必须原样使用，禁止自行计算或修改）：\n- `liuri.gan_shishen` → 今日天干十神\n- `liuri.zhi_shishen` → 今日地支十神\n- `liuri.cangygan_details` → 藏干及其十神\n- `liuri.huangli` → 黄历宜忌、建除、纳音\n- `liuri.positions` → 喜神/财神/福神方位\n- `interactions.zhi` → 今日刑冲合（地支）\n- `interactions.gan` → 今日天干互动\n- `wuyu.merged` → 妻财子禄寿五运评级\n- `prompt_for_llm.writing_prompt` → 写作指令\n- `prompt_for_llm.system_context` → 背景数据\n\n## 第三步：Self-Verify 核查（发出前必做）\n\n逐项核查：\n1. 我输出的十神是否与 `liuri.gan_shishen` / `liuri.zhi_shishen` 完全一致？\n2. 我输出的刑冲合是否与 `interactions.zhi` 列表完全一致？没有的不能编，有的不能漏。\n3. 我输出的幸运色/方位是否与 `liuri.positions` 和 `system_context.lucky_colors` 一致？\n4. 我输出的五运评级是否与 `wuyu.merged` 各维度的 `rating` 一致？\n5. 有没有任何一句话是我\"感觉应该是这样\"但在 JSON 里找不到依据的？有 → 删掉。\n6. 刑冲合是否完整展示？`interactions.zhi` 列表有几条就必须输出几条，逐条展示，不可省略任何一条。\n7. 自刑表达是否规范？必须写\"午午自刑\"而非\"午自刑\"，必须写\"辰辰自刑\"而非\"辰自刑\"。\n8. 幸运色是否来自 `system_context.lucky_colors`？禁止使用固定的\"用神=火→红色\"模板。\n\n## 第四步：按 writing_prompt 生成推送文本\n\n严格按照 `prompt_for_llm.writing_prompt` 的格式要求生成推送。\n\n⛔ 铁规：\n- 禁止在没有调用脚本的情况下输出任何十神判断\n- 禁止照搬上一次推送的内容\n- 禁止输出与脚本数据矛盾的结论\n- 禁止输出多份日运（只输出一份）\n- 如果脚本执行失败，发送\"今日日运脚本执行异常，本喵稍后重试\"，不要编造内容\n\n## 第五步：发送\n\n将生成的推送文本发送给沛柔（飞书 open_id: ou_f9095feb1adeb3f3997725460bcdd87d，accountId: suanming）。\n\n只发送一次，发送后立即结束，不要重复发送。",
+        "timeoutSeconds": 180
       },
       "delivery": {
         "mode": "announce",
@@ -757,16 +393,7 @@
         "accountId": "suanming",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778976000000,
-        "lastRunAtMs": 1778889807681,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 41016,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      },
+      "state": {},
       "updatedAtMs": 1778889848697
     },
     {
@@ -828,8 +455,9 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "执行 ~/.openclaw/workspace-guanjia/scripts/clean-media.sh，清理前一天及之前的所有 media 文件（inbound 和 browser）。执行完毕后简短汇报删除了多少文件。",
-        "lightContext": true
+        "message": "执行 media 目录清理。\n\n步骤：\n1. 运行命令：bash ~/.openclaw/workspace-guanjia/scripts/clean-media.sh\n2. 如果脚本不存在或执行失败，手动执行：\n   find ~/.openclaw/media/inbound -type f -not -newermt $(date +%Y-%m-%d) -delete 2>/dev/null\n   find ~/.openclaw/media/browser -type f -not -newermt $(date +%Y-%m-%d) -delete 2>/dev/null\n3. 确认清理结果：ls ~/.openclaw/media/inbound/ ~/.openclaw/media/browser/ 2>/dev/null | wc -l\n\n静默完成，不发消息。",
+        "lightContext": true,
+        "timeoutSeconds": 60
       },
       "delivery": {
         "mode": "none",
@@ -847,164 +475,294 @@
       }
     },
     {
-      "id": "3c062de7-ae21-4a1e-bbf7-1a1c56cc6dab",
-      "name": "招财-晓程科技等竞价监控",
-      "enabled": false,
-      "deleteAfterRun": true,
-      "createdAtMs": 1778166403175,
-      "updatedAtMs": 1778195397386,
-      "schedule": {
-        "kind": "at",
-        "at": "2026-05-07T23:06:43.125Z"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "明天（5月8日）开盘关注以下尾盘候选股：晓程科技（300139）⭐⭐⭐、铭普光磁（002902）⭐⭐⭐、川润股份（002272）⭐⭐、新朋股份（002328）⭐⭐。请在9:15集合竞价、9:25开盘后两个节点拉4只股票的竞价情况和开盘走势，有异动（跳空5%/秒板/闪崩）立即推送。⚠️ 报告直接出正文内容，不要加系统通知。"
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "last",
-        "accountId": "zhaocai"
-      },
-      "state": {
-        "lastRunAtMs": 1778195203134,
-        "lastRunStatus": "error",
-        "lastStatus": "error",
-        "lastDurationMs": 194252,
-        "lastError": "AxiosError: Request failed with status code 400",
-        "lastDeliveryStatus": "unknown",
-        "consecutiveErrors": 1
-      }
-    },
-    {
-      "id": "jirou-selfheal-daily-report",
-      "agentId": "jirou",
-      "name": "肌肉-08:10日报自愈检查",
+      "id": "zhaocai-intl-finance-monitor",
+      "agentId": "zhaocai",
+      "name": "招财-国际金融事件监控",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "10 8 * * *",
+        "expr": "0 8,12,18,22 * * *",
         "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "系统自检 + 补救（无需通知用户，除非补救失败）：\n\n1. 检查 memory/pending/DailyReport-{{YESTERDAY}}.md 是否存在\n   - 存在 → 继续步骤2\n   - 不存在 → 运行 python3 ~/.openclaw/workspace-jirou/scripts/daily-report-generator.py --date {{YESTERDAY}} 生成日报\n\n2. 检查 memory/reports/{{YESTERDAY}}.md 是否存在（归档 = 发送成功）\n   - 存在 → 一切正常，退出静默\n   - 不存在 → 读取 memory/pending/DailyReport-{{YESTERDAY}}.md 内容，通过飞书发送给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou），发送后静默\n\n3. 只有在补救失败时才发消息通知用户",
+        "message": "搜索过去6小时内发生的重大国际金融事件（宏观政策、地缘冲突、金融市场波动）。\n\n判断标准：影响范围广（全球/全国）、市场相关性高（A股/港股/美股）。\n\n报告命名规则：\n- 08:00 → 国际金融事件晨报\n- 12:00 → 国际金融事件午报\n- 18:00 → 国际金融事件晚报\n- 22:00 → 国际金融事件夜报\n\n如有重大事件：生成简要报告，通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n如无重大事件：静默退出，不发任何消息。\n\n⚠️ 报告直接输出正文内容，不加系统通知式文字。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "zhaocai-0830-morning-report",
+      "agentId": "zhaocai",
+      "name": "招财-08:30晨报",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 8 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "生成今日A股晨报。\n\n重要前置判断：先确认今天是否为A股交易日（节假日非交易日直接静默退出）。\n\n晨报内容：\n1. 昨日A股大盘收盘回顾（沪深300、上证、深证、创业板涨跌幅+成交额）\n2. 昨日收盘后美股表现（三大指数涨跌+重要个股）\n3. 所有持仓标的昨日表现（9只个股+4只场内ETF+14只场外基金净值变动）\n4. 昨日收盘后至今晨重要新闻集锦（政策、行业、公司公告）\n5. 今日开盘展望与关注点\n6. 今日可能异动的投资机会推荐（2-5只标的，含逻辑和关键价位）\n\n⚠️ 第6点推荐的标的将作为今日短线验证标的，由「短线标的实时监控」任务跟踪验证。请将推荐标的代码和名称写入 memory/pending/today-picks-{{TODAY}}.md。\n\n风格：专业投研机构晨报风格，简洁有观点有逻辑。\n\n使用 skills：\n- new-akshare-stock（获取行情数据）\n- fundamental-stock-analysis（基本面参考）\n- a-stock-trading-assistant（六层决策评分）\n\n生成后通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n⚠️ 报告直接输出正文内容，不加系统通知式文字。",
+        "timeoutSeconds": 900
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "zhaocai-1445-fund-tail-analysis",
+      "agentId": "zhaocai",
+      "name": "招财-14:45基金尾盘分析",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "45 14 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行基金尾盘分析（交易日14:45，距收盘15分钟）。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n分析内容：\n1. 运行基金穿透盈亏计算：使用 skills/fund-penetration-pnl 的公式，计算14只场外基金+3只场内ETF今日预估盈亏\n2. 使用 skills/fund-penetration-pnl 获取盘中估值数据\n3. 基金穿透重仓股今日表现TOP5涨/TOP5跌\n4. 尾盘操作建议：\n   - 哪些基金今日跌幅较大可考虑尾盘加仓\n   - 哪些基金今日涨幅较大可考虑止盈\n   - 使用 skills/tail-position-overnight 的尾盘选股逻辑，看是否有符合条件的新标的\n5. 明确给出操作建议（加仓/减仓/持有/观望）及理由\n\n使用 skills：\n- fund-penetration-pnl（穿透盈亏计算）\n- fund-penetration-pnl（盘中估值，已合并）\n- tail-position-overnight（尾盘选股）\n- new-akshare-stock（实时行情）\n\n通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n⚠️ 报告直接输出正文内容，不加系统通知式文字。",
+        "timeoutSeconds": 300
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "zhaocai-1530-close-summary",
+      "agentId": "zhaocai",
+      "name": "招财-15:30收盘总结",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 15 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "生成今日A股收盘总结。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n收盘总结内容：\n1. 今日大盘（沪深300/上证/深证/创业板）涨跌幅 + 成交额\n2. 持仓个股今日涨跌幅（9只A股逐一列出）\n3. 场内ETF今日涨跌幅（4只）\n4. 场外基金预估净值变动（14只，使用 fund-penetration-pnl 计算）\n5. 今日核心驱动因素（2-3句话）\n6. 明日展望（1-2句话）\n7. 今日投资精华提炼：\n   - 今日学到了什么\n   - 哪些判断对了/错了\n   - 值得记录的市场规律\n\n使用 skills：\n- new-akshare-stock（收盘行情）\n- fund-penetration-pnl（基金穿透盈亏）\n- a-stock-trading-assistant（个股评分更新）\n\n生成后保存到 memory/pending/Close-{{TODAY}}.md，并通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n⚠️ 报告直接输出正文内容，不加系统通知式文字。",
+        "timeoutSeconds": 600
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "zhaocai-market-alert-hourly",
+      "agentId": "zhaocai",
+      "name": "招财-市场异动监控(每小时)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9,10,11,12,13,14,15 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行市场异动扫描。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n运行命令：\n```bash\ncd ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts && python3 scan_alert.py\n```\n\n根据脚本输出判断：\n- 有异动内容 → 通过飞书推送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）\n- 无异动（输出为空或「扫描完成: 0 条异动」）→ 静默退出，不发任何消息\n\n⚠️ 注意：heartbeat 也会做持仓异动扫描，但 heartbeat 是轻量快扫（仅检查阈值），本任务是完整的 scan_alert.py 脚本扫描（含基金穿透、成交量突变等更多维度）。两者互补不冲突。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "zhaocai-short-term-watch",
+      "agentId": "zhaocai",
+      "name": "招财-短线标的实时监控",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0,30 9,10,11,12,13,14,15 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行短线标的实时监控（验证今日晨报推荐的投资机会）。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n步骤：\n1. 读取 memory/pending/today-picks-{{TODAY}}.md 获取今日晨报推荐的标的列表\n   - 如果文件不存在，说明今日晨报未推荐标的，静默退出\n2. 使用 akshare 获取这些标的的实时行情（最新价、涨跌幅、成交量、换手率）\n3. 与开盘价对比，计算日内涨跌\n4. 汇报格式：\n\n```\n📋 短线验证 HH:MM\n\n[标的名] [代码] | 现价:XX | 涨跌:±X.XX% | 量比:X.X | 换手:X.X%\n...\n\n验证结论：晨报推荐逻辑是否兑现（简要1-2句）\n```\n\n5. 涨跌超±3%的标的用🔴🟢标记\n6. 收盘后（15:00-15:30）的最后一次扫描需要做完整复盘：命中率、盈亏模拟、经验总结，追加写入 memory/pending/today-picks-{{TODAY}}.md\n\n推送规则：\n- 有标的涨跌超±3% → 立即推送\n- 所有标的波动平稳 → 静默退出\n- 15:00后的收盘复盘 → 必须推送\n\n通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "zhaocai-weekly-fund-update",
+      "agentId": "zhaocai",
+      "name": "招财-每周基金持仓穿透更新",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8 * * 1",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行基金持仓穿透数据更新（每周一早8:00）。\n\n运行命令：\npython3 ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts/update_fund_holdings.py\n\n完成后通过飞书发送更新结果给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n注意：只操作招财自己的 workspace。",
+        "timeoutSeconds": 300
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
+      "id": "guanjia-flight-shanghai-seoul",
+      "agentId": "guanjia",
+      "name": "管家-机票监控(上海-首尔)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行上海-首尔机票监控。\n\n搜索条件：\n- 出发：上海（浦东PVG或虹桥SHA）→ 首尔（仁川ICN或金浦GMP）\n- 去程：本周四或下周四，19:00及之后出发的航班\n- 回程：对应周日，21:00及之前落地上海的航班\n- 至少住一晚（周四晚到达，周日回）\n- 往返总价 ≤ 1500元人民币\n\n搜索方式：\n使用 fliggy-flight-monitor skill，构建飞猪查询URL：\n- 去程：tripType=0, depCity=SHA/PVG, arrCity=ICN/GMP, depDate=下一个周四日期\n- 回程：tripType=0, depCity=ICN/GMP, arrCity=SHA/PVG, depDate=对应周日日期\n\n用浏览器打开查询，解析价格。\n\n判断逻辑：\n- 找到往返总价 ≤ 1500元 → 立即推送飞书（open_id: ou_e62c3623b382df683370c131baf8f4c8，accountId: guanjia）\n- 未找到低价 → 静默退出，不发消息\n- 记录价格到 memory/flight-monitor/shanghai-seoul.md\n\n推送格式：\n🔔 上海-首尔低价机票！\n去程：[日期] [航班] [时间] ¥[价格]\n回程：[日期] [航班] [时间] ¥[价格]\n往返总价：¥[总价]\n[订票链接]",
         "timeoutSeconds": 300
       },
       "delivery": {
         "mode": "none",
         "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
+        "to": "ou_e62c3623b382df683370c131baf8f4c8",
+        "accountId": "guanjia",
         "bestEffort": true
       },
       "failureAlert": {
         "after": 3,
         "channel": "feishu",
-        "to": "ou_aaf284a8365c85e8b792bb77b9bc8d59",
-        "accountId": "jirou",
+        "to": "ou_e62c3623b382df683370c131baf8f4c8",
+        "accountId": "guanjia",
         "cooldownMs": 3600000
       },
-      "state": {
-        "nextRunAtMs": 1778976600000,
-        "lastRunAtMs": 1778890200011,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 26302,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
-      },
-      "updatedAtMs": 1778890226313
+      "state": {}
     },
     {
-      "id": "4214818c-b857-41ce-8043-36923608ef77",
-      "name": "招财-短线标的实时监控",
-      "description": "每10分钟扫描晓程科技/铭普光磁/川润股份/新朋股份/再升科技，涨跌超±3%立即推送",
+      "id": "guanjia-flight-shanghai-bangkok",
+      "agentId": "guanjia",
+      "name": "管家-机票监控(上海-曼谷)",
       "enabled": true,
-      "createdAtMs": 1778199445646,
-      "updatedAtMs": 1778199445646,
       "schedule": {
         "kind": "cron",
-        "expr": "*/10 9:10-15:05 * * 1-5",
+        "expr": "30 9 * * *",
         "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "请扫描以下5只昨日（5月7日）尾盘选股实盘验证标的的实时行情（使用akshare stock_zh_a_spot_em）：\n- 晓程科技（代码需查询）\n- 铭普光磁（代码需查询）\n- 川润股份（代码需查询）\n- 新朋股份（代码需查询）\n- 再升科技（代码需查询）\n\n步骤：\n1. 先用 akshare stock_zh_a_spot_em() 找到这5只票当天的最新价、涨跌幅、成交量\n2. 输出每只股票：代码、名称、最新价、涨跌幅、成交量\n3. 涨跌超±3%的标的用🔴🔴标记并说明驱动原因\n4. 总结：昨日尾盘逻辑今日是否兑现\n\n如果代码未知，用股票名称精确搜索确认代码后再查行情。\n\n结果直接推送，不确认。",
-        "timeoutSeconds": 120
+        "message": "执行上海-曼谷机票监控。\n\n搜索条件：\n- 出发：上海（浦东PVG或虹桥SHA）→ 曼谷（素万那普BKK或廊曼DMK）\n- 去程：本周四或下周四，19:00及之后出发的航班\n- 回程：对应周日，21:00及之前落地上海的航班\n- 至少住一晚（周四晚到达，周日回）\n- 往返总价 ≤ 1500元人民币\n\n搜索方式：\n使用 fliggy-flight-monitor skill，构建飞猪查询URL：\n- 去程：tripType=0, depCity=SHA/PVG, arrCity=BKK/DMK, depDate=下一个周四日期\n- 回程：tripType=0, depCity=BKK/DMK, arrCity=SHA/PVG, depDate=对应周日日期\n\n用浏览器打开查询，解析价格。\n\n判断逻辑：\n- 找到往返总价 ≤ 1500元 → 立即推送飞书（open_id: ou_e62c3623b382df683370c131baf8f4c8，accountId: guanjia）\n- 未找到低价 → 静默退出，不发消息\n- 记录价格到 memory/flight-monitor/shanghai-bangkok.md\n\n推送格式：\n🔔 上海-曼谷低价机票！\n去程：[日期] [航班] [时间] ¥[价格]\n回程：[日期] [航班] [时间] ¥[价格]\n往返总价：¥[总价]\n[订票链接]",
+        "timeoutSeconds": 300
       },
       "delivery": {
-        "mode": "announce",
-        "channel": "last",
-        "accountId": "zhaocai"
+        "mode": "none",
+        "channel": "feishu",
+        "to": "ou_e62c3623b382df683370c131baf8f4c8",
+        "accountId": "guanjia",
+        "bestEffort": true
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e62c3623b382df683370c131baf8f4c8",
+        "accountId": "guanjia",
+        "cooldownMs": 3600000
       },
       "state": {}
-    },
-    {
-      "id": "1c237c52-9e0f-45d8-886f-bb3e13445974",
-      "name": "招财-*ST西发建仓提醒",
-      "description": "*ST西发000752价格杀到8.5元以下时立即推送，仅交易时段",
-      "enabled": true,
-      "createdAtMs": 1778233881965,
-      "updatedAtMs": 1778233881965,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 9:30-15:00 * * 1-5"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "检查*ST西发（000752）当前价格。\n\n使用以下API获取实时数据：\npython3 -c \"import urllib.request, json; d=json.loads(urllib.request.urlopen('http://push2.eastmoney.com/api/qt/stock/get?secid=0.000752&fields=f43,f57,f58,f169,f170',timeout=5).read()); print(d['data']['f43']/100, d['data']['f169']/100)\"\n\n如果现价 <= 8.5元，立刻推送飞书告诉我！\n\n推送格式：\n🔥 *ST西发建仓线已到！\n现价：X元（跌幅：X%）\n建议：可以分批建仓\n\n如果现价 > 8.5元，静默退出，不发任何消息。",
-        "timeoutSeconds": 60
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "last",
-        "accountId": "zhaocai"
-      },
-      "state": {}
-    },
-    {
-      "id": "d0d59f37-8e6c-4d55-925f-4a7086303302",
-      "agentId": "zhaocai",
-      "name": "招财-14:50收盘分析",
-      "description": "每个交易日14:50自动推送：持仓个股当日盈亏 + 基金穿透重仓股盈亏",
-      "enabled": true,
-      "createdAtMs": 1778740453987,
-      "updatedAtMs": 1778827838924,
-      "schedule": {
-        "kind": "cron",
-        "expr": "50 14 * * 1-5"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "cd ~/.openclaw/workspace-zhaocai && python3 skills/fund-penetration-pnl/scripts/close_analysis.py",
-        "timeoutSeconds": 120
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "feishu"
-      },
-      "state": {
-        "nextRunAtMs": 1779087000000,
-        "lastRunAtMs": 1778827800009,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 38915,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      }
     }
   ]
 }

@@ -20,24 +20,21 @@ import argparse
 from datetime import datetime, time
 from pathlib import Path
 
-# ─── 个人持仓配置 ───
-STOCKS = {
-    "300896": {"name": "爱美客",    "sector": "医美",   "cost": 478.847},
-    "600309": {"name": "万华化学",  "sector": "化工",   "cost": 88.690},
-    "600352": {"name": "浙江龙盛",  "sector": "化工",   "cost": 12.924},
-    "688363": {"name": "华熙生物",  "sector": "医美",   "cost": 238.043},
-    "002176": {"name": "江特电机",  "sector": "新能源",  "cost": 25.506},
-    "002614": {"name": "澳洋健康",  "sector": "医美",   "cost": 6.530},
-    "000652": {"name": "泰达股份",  "sector": "地产",   "cost": 10.105},
-    "002551": {"name": "尚荣医疗",  "sector": "医疗",   "cost": 4.600},
-    "600221": {"name": "海航控股",  "sector": "航空",   "cost": 6.236},
-}
+# ─── 个人持仓配置（从统一 holdings.json 读取）───
+import pathlib as _pathlib
+_HOLDINGS_PATH = _pathlib.Path(__file__).parent.parent.parent.parent / "holdings.json"
 
-ETFS = {
-    "516650": {"name": "有色金属ETF",  "sector": "有色金属", "cost": 2.449},
-    "159566": {"name": "储能电池ETF", "sector": "新能源",   "cost": 2.085},
-    "161725": {"name": "招商中证白酒", "sector": "白酒",    "cost": 1.355},
-}
+def _load_holdings_config():
+    if _HOLDINGS_PATH.exists():
+        with open(_HOLDINGS_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    return {"stocks": {}, "etfs": {}, "funds": {}}
+
+_H = _load_holdings_config()
+STOCKS = {code: {"name": info["name"], "sector": info.get("sector", ""), "cost": info.get("cost", 0)}
+          for code, info in _H.get("stocks", {}).items()}
+ETFS = {code: {"name": info["name"], "sector": info.get("sector", ""), "cost": info.get("cost", 0)}
+        for code, info in _H.get("etfs", {}).items()}
 
 # ─── 默认触发条件配置 ───
 DEFAULT_TRIGGERS = {
@@ -273,12 +270,38 @@ def fetch_us_futures():
 
 
 def fetch_forex():
-    """获取主要汇率数据（美元/离岸人民币、欧元/美元、英镑/美元）
-    新浪格式：USDCNY [1]=当前价 [8]=昨收；EURUSD [1]=当前价 [7]=昨收
+    """获取主要汇率数据（新浪优先，东方财富兜底）"""
+    result = _fetch_forex_sina()
+    # 检查是否有缺失的货币对，用东方财富兜底
+    expected_keys = ["USDCNY", "USDCNH", "EURUSD", "GBPUSD",
+                     "NZDCNY", "AUDCNY", "CADCNY", "HKDCNY", "KRWCNY"]
+    missing = [k for k in expected_keys if k not in result]
+    if missing:
+        print(f"  ⚠️ 新浪缺失 {len(missing)} 个货币对，尝试东方财富兜底...")
+        fallback = _fetch_forex_eastmoney()
+        for k in missing:
+            if k in fallback:
+                result[k] = fallback[k]
+    # 最终兜底：如果东方财富也没有，尝试 akshare
+    still_missing = [k for k in expected_keys if k not in result]
+    if still_missing:
+        print(f"  ⚠️ 东方财富仍缺失 {len(still_missing)} 个，尝试 akshare 兜底...")
+        fallback2 = _fetch_forex_akshare()
+        for k in still_missing:
+            if k in fallback2:
+                result[k] = fallback2[k]
+    return result
+
+
+def _fetch_forex_sina():
+    """P1: 新浪外汇接口
+    格式：USDCNY [1]=当前价 [8]=昨收；EURUSD [1]=当前价 [7]=昨收
     """
     try:
         import requests
-        url = "https://hq.sinajs.cn/list=USDCNY,USDCNH,EURUSD,GBPUSD"
+        # 新浪外汇有两种格式，都试一下
+        # 格式1: 直接货币对
+        url = "https://hq.sinajs.cn/list=USDCNY,USDCNH,EURUSD,GBPUSD,NZDCNY,AUDCNY,CADCNY,HKDCNY,KRWCNY"
         headers = {"Referer": "https://finance.sina.com.cn", "User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=10)
         r.encoding = "gbk"
@@ -288,6 +311,11 @@ def fetch_forex():
             "USDCNH": (1, 8, "美元/在岸人民币"),
             "EURUSD": (1, 7, "欧元/美元"),
             "GBPUSD": (1, 7, "英镑/美元"),
+            "NZDCNY": (1, 8, "新西兰元/人民币"),
+            "AUDCNY": (1, 8, "澳元/人民币"),
+            "CADCNY": (1, 8, "加拿大元/人民币"),
+            "HKDCNY": (1, 8, "港币/人民币"),
+            "KRWCNY": (1, 8, "韩元/人民币"),
         }
         for line in r.text.strip().split(chr(10)):
             if "hq_str_" not in line or "=" not in line:
@@ -302,14 +330,126 @@ def fetch_forex():
             try:
                 price = float(vals[idx_price])
                 prev  = float(vals[idx_prev])
-                change_pct = (price - prev) / prev * 100 if prev else 0.0
+                if price == 0 or prev == 0:
+                    continue
+                change_pct = (price - prev) / prev * 100
                 result[key] = {"name": name, "symbol": key,
                                "price": price, "change_pct": change_pct}
             except (ValueError, IndexError):
                 continue
+        # 如果部分货币对没拿到，尝试 fx_s 前缀格式
+        missing_keys = [k for k in field_map if k not in result]
+        if missing_keys:
+            fx_codes = ",".join([f"fx_s{k}" for k in missing_keys])
+            url2 = f"https://hq.sinajs.cn/list={fx_codes}"
+            try:
+                r2 = requests.get(url2, headers=headers, timeout=10)
+                r2.encoding = "gbk"
+                for line in r2.text.strip().split(chr(10)):
+                    if "hq_str_" not in line or "=" not in line:
+                        continue
+                    raw_key = line.split("=")[0].split("fx_s")[-1].strip()
+                    if raw_key not in field_map:
+                        continue
+                    idx_price, idx_prev, name = field_map[raw_key]
+                    vals = line.split("=")[1].strip().strip('"').rstrip('",').split(",")
+                    if len(vals) <= max(idx_price, idx_prev):
+                        continue
+                    try:
+                        price = float(vals[idx_price])
+                        prev  = float(vals[idx_prev])
+                        if price == 0 or prev == 0:
+                            continue
+                        change_pct = (price - prev) / prev * 100
+                        result[raw_key] = {"name": name, "symbol": raw_key,
+                                           "price": price, "change_pct": change_pct}
+                    except (ValueError, IndexError):
+                        continue
+            except:
+                pass
         return result
     except Exception as e:
-        print(f"⚠️ 汇率数据获取失败: {e}")
+        print(f"⚠️ 新浪汇率获取失败: {e}")
+        return {}
+
+
+def _fetch_forex_eastmoney():
+    """P2: 东方财富外汇接口（兜底）
+    接口: https://push2.eastmoney.com/api/qt/clist/get 外汇板块
+    """
+    try:
+        import requests
+        # 东方财富外汇实时数据
+        # 119.USDCNY=美元兑人民币, 119.EURCNY=欧元兑人民币, etc.
+        em_map = {
+            "119.USDCNY": ("USDCNY", "美元/离岸人民币"),
+            "119.EURCNY": ("EURUSD", "欧元/美元"),  # 需要反算
+            "119.GBPCNY": ("GBPUSD", "英镑/美元"),  # 需要反算
+            "119.NZDCNY": ("NZDCNY", "新西兰元/人民币"),
+            "119.AUDCNY": ("AUDCNY", "澳元/人民币"),
+            "119.CADCNY": ("CADCNY", "加拿大元/人民币"),
+            "119.HKDCNY": ("HKDCNY", "港币/人民币"),
+            "119.KRWCNY": ("KRWCNY", "韩元/人民币"),
+        }
+        secids = ",".join(em_map.keys())
+        url = (f"https://push2.eastmoney.com/api/qt/ulist.np/get"
+               f"?fltt=2&invt=2&fields=f2,f3,f12,f14&secids={secids}")
+        headers = {"Referer": "https://quote.eastmoney.com/", "User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=10)
+        data = r.json()
+        result = {}
+        for item in data.get('data', {}).get('diff', []):
+            code = item.get('f12', '')
+            price = item.get('f2')
+            change_pct = item.get('f3')
+            if price is None or change_pct is None:
+                continue
+            # 匹配到我们的 key
+            for em_secid, (our_key, name) in em_map.items():
+                if code in em_secid:
+                    result[our_key] = {"name": name, "symbol": our_key,
+                                       "price": float(price), "change_pct": float(change_pct)}
+                    break
+        return result
+    except Exception as e:
+        print(f"⚠️ 东方财富汇率获取失败: {e}")
+        return {}
+
+
+def _fetch_forex_akshare():
+    """P3: akshare 外汇接口（最终兜底）"""
+    try:
+        import akshare as ak
+        # akshare 外汇实时行情
+        df = ak.currency_boc_safe()  # 中国银行外汇牌价
+        result = {}
+        name_map = {
+            "美元": ("USDCNY", "美元/离岸人民币"),
+            "新西兰元": ("NZDCNY", "新西兰元/人民币"),
+            "澳大利亚元": ("AUDCNY", "澳元/人民币"),
+            "加拿大元": ("CADCNY", "加拿大元/人民币"),
+            "英镑": ("GBPUSD", "英镑/美元"),
+            "欧元": ("EURUSD", "欧元/美元"),
+            "港币": ("HKDCNY", "港币/人民币"),
+            "韩国元": ("KRWCNY", "韩元/人民币"),
+        }
+        for _, row in df.iterrows():
+            currency_name = row.get('货币名称', '')
+            for cn_name, (key, display_name) in name_map.items():
+                if cn_name in currency_name:
+                    try:
+                        # 中行牌价：中间价
+                        price = float(row.get('中行折算价', 0)) / 100  # 中行报价单位是100外币
+                        if price > 0:
+                            result[key] = {"name": display_name, "symbol": key,
+                                           "price": price, "change_pct": 0.0,
+                                           "note": "中行牌价(无日内涨跌)"}
+                    except:
+                        pass
+                    break
+        return result
+    except Exception as e:
+        print(f"⚠️ akshare汇率获取失败: {e}")
         return {}
 
 

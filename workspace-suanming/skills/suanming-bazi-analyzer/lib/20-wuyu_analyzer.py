@@ -117,6 +117,30 @@ WUYU_SHISHEN_MAP = {
 
 LAYER_WEIGHTS = {"原局": 3.0, "大运": 2.0, "流年": 1.5, "流月": 1.0, "流日": 0.5}
 
+# 不同场景下的权重分配
+# 原则：
+#   - 原局永远是底色（权重最高），但随着层级增加，焦点层的权重相对提升
+#   - 太岁（流年）在所有场景中都有较高权重（太岁为尊）
+#   - 应期层（流月/流日）在对应场景中权重提升
+SCENE_WEIGHTS = {
+    "full": {
+        # 原局精批：原局为主，大运+流年为辅
+        "原局": 3.0, "大运": 2.0, "流年": 1.5, "流月": 0.8, "流日": 0.3,
+    },
+    "yearly": {
+        # 年运分析：流年为焦点（太岁为尊），原局和大运为背景
+        "原局": 2.0, "大运": 2.0, "流年": 3.0, "流月": 0.8, "流日": 0.3,
+    },
+    "monthly": {
+        # 月运分析：流月为应期焦点，流年仍为太岁
+        "原局": 1.5, "大运": 1.5, "流年": 2.5, "流月": 3.0, "流日": 0.3,
+    },
+    "daily": {
+        # 日运分析：流日为当日焦点，流月为近期应期，流年为太岁
+        "原局": 1.0, "大运": 1.0, "流年": 2.0, "流月": 2.0, "流日": 3.0,
+    },
+}
+
 
 # ─────────────────────────────────────────────────────────────────
 # 辅助函数
@@ -140,14 +164,36 @@ def _get_interactions(zhi_a, zhi_set):
 
 
 def _score_shishen(shishen, dim, gender):
+    """
+    评估某十神对某维度的影响分数。
+
+    正官 vs 七杀的区别（禄维度）：
+    - 正官：稳定的权力和地位，无条件正面 → +2
+    - 七杀：压力和竞争，有制则为权（+1），无制则为祸（0或-1）
+      七杀是否有制需要在通关逻辑（_check_tongguan）中判断，
+      这里给七杀基础分 +1（中性偏正面，因为杀本身代表"有事业心"）
+
+    食神 vs 伤官的区别（子维度）：
+    - 食神：温和的才华表达，无条件正面 → +2
+    - 伤官：锋利的才华但易惹祸，基础 +1（有印制则好，无印制则伤官见官）
+    """
     relevant = WUYU_SHISHEN_MAP.get(gender, WUYU_SHISHEN_MAP["male"]).get(dim, [])
+
     if shishen in relevant:
+        # 特殊处理：七杀和伤官不给满分
+        if shishen == '杀' and dim == 'lu':
+            return 1  # 七杀基础+1（有制才升为+2，在通关逻辑中处理）
+        elif shishen == '伤' and dim == 'zi':
+            return 1  # 伤官基础+1（锋利但易惹祸）
+        elif shishen == '杀' and dim == 'qi' and gender == 'female':
+            return 1  # 女命七杀为偏夫/情人，不如正官稳定
         return 2
+
     BAD_FOR = {
         "qi":   ["劫","比"],
         "cai":  ["劫","杀"],
         "zi":   ["杀","官"],
-        "lu":   ["伤","食"],
+        "lu":   ["伤"],  # 伤官见官为祸（食神不算，食神制杀反而好）
         "shou": ["财","才"],
     }
     if shishen in BAD_FOR.get(dim, []):
@@ -228,7 +274,16 @@ def _analyze_one_layer(gz, day_gan, gender, layer_name, yuanju_zhis):
 # 多层叠加
 # ─────────────────────────────────────────────────────────────────
 
-def _merge_layers(layers, gender):
+def _merge_layers(layers, gender, scene="full"):
+    """
+    多层叠加合并，根据场景动态调整权重。
+
+    参数：
+        layers: 各层分析结果列表
+        gender: 性别
+        scene:  场景类型 "full"/"yearly"/"monthly"/"daily"
+    """
+    weights = SCENE_WEIGHTS.get(scene, LAYER_WEIGHTS)
     merged = {}
     for dim in WUYU_DIMS:
         total_score     = 0.0
@@ -237,7 +292,7 @@ def _merge_layers(layers, gender):
 
         for layer in layers:
             layer_name = layer.get("layer", "")
-            w          = LAYER_WEIGHTS.get(layer_name, 1.0)
+            w          = weights.get(layer_name, 1.0)
             dim_data   = layer.get("wuyu", {}).get(dim, {})
             score      = dim_data.get("score", 0)
             notes      = dim_data.get("notes", [])
@@ -251,6 +306,18 @@ def _merge_layers(layers, gender):
                 "score": score,
                 "notes": notes,
             })
+
+        # ── 通关逻辑：跨维度互动调整 ──────────────────────────────
+        # 收集所有层级的十神信息，用于判断通关关系
+        all_shishen_gan = [l.get("shishen_gan", "") for l in layers if l.get("shishen_gan")]
+        all_shishen_zhi = [l.get("shishen_zhi", "") for l in layers if l.get("shishen_zhi")]
+        all_shishen = set(all_shishen_gan + all_shishen_zhi)
+
+        tongguan_notes = _check_tongguan(dim, all_shishen, gender)
+        if tongguan_notes:
+            for tn in tongguan_notes:
+                total_score += tn['score_adj']
+                all_notes.append(f"[通关] {tn['note']}")
 
         if total_score >= 3:
             rating = "大吉"
@@ -272,6 +339,105 @@ def _merge_layers(layers, gender):
             "layer_summaries": layer_summaries,
         }
     return merged
+
+
+def _check_tongguan(dim: str, all_shishen: set, gender: str) -> list:
+    """
+    通关逻辑：检查跨维度的十神互动关系，返回评分调整。
+
+    核心通关关系（子平法）：
+    1. 食神制杀 → 禄维度：如果有杀（禄的负面压力），同时有食神，食神制杀，禄的压力减轻
+    2. 印化杀 → 禄维度：如果有杀，同时有印星，印化杀生身，禄的压力减轻
+    3. 伤官见官 → 禄维度：如果有伤官+正官同现，且无印制伤，禄维度受损
+    4. 财星坏印 → 寿维度：如果有财星+印星同现，财克印，寿维度受损
+    5. 食伤生财 → 财维度：如果有食伤+财星同现，食伤生财，财维度加分
+    6. 官印相生 → 禄/寿维度：如果有官+印同现，官生印，禄寿双利
+    """
+    results = []
+
+    if dim == 'lu':  # 禄（官禄/事业）
+        has_sha = '杀' in all_shishen
+        has_guan = '官' in all_shishen
+        has_shi = '食' in all_shishen
+        has_shang = '伤' in all_shishen
+        has_yin = '印' in all_shishen or '枭' in all_shishen
+
+        # 食神制杀：杀有食制，压力减轻
+        if has_sha and has_shi:
+            results.append({
+                'score_adj': 1.0,
+                'note': '食神制杀，七杀压力被食神牵制，事业压力有化解'
+            })
+        # 印化杀：杀有印化，化杀为权
+        elif has_sha and has_yin:
+            results.append({
+                'score_adj': 0.8,
+                'note': '印化杀，七杀被印星化解，化杀为权，有贵人助力'
+            })
+        # 伤官见官：伤官克正官，事业受损（除非有印制伤）
+        if has_shang and has_guan and not has_yin:
+            results.append({
+                'score_adj': -1.0,
+                'note': '伤官见官，伤官克正官且无印制，事业易有口舌是非'
+            })
+        elif has_shang and has_guan and has_yin:
+            results.append({
+                'score_adj': 0.3,
+                'note': '伤官见官有印制，印星化解伤官之害，事业无大碍'
+            })
+
+    elif dim == 'shou':  # 寿（健康）
+        has_cai = '财' in all_shishen or '才' in all_shishen
+        has_yin = '印' in all_shishen or '枭' in all_shishen
+        has_guan = '官' in all_shishen
+        has_sha = '杀' in all_shishen
+
+        # 财星坏印：财克印，印为寿星，寿受损
+        if has_cai and has_yin:
+            results.append({
+                'score_adj': -0.5,
+                'note': '财星坏印，财克印星（寿星），健康需多留意'
+            })
+        # 官印相生：官生印，印为寿星，寿得益
+        if (has_guan or has_sha) and has_yin:
+            results.append({
+                'score_adj': 0.5,
+                'note': '官印相生，官杀生印（寿星），生命力有源'
+            })
+
+    elif dim == 'cai':  # 财（财运）
+        has_shi = '食' in all_shishen
+        has_shang = '伤' in all_shishen
+        has_cai = '财' in all_shishen or '才' in all_shishen
+
+        # 食伤生财：食伤生财星，财运加分
+        if (has_shi or has_shang) and has_cai:
+            results.append({
+                'score_adj': 0.8,
+                'note': '食伤生财，才华转化为财富，求财有道'
+            })
+
+    elif dim == 'qi':  # 妻/夫（感情）
+        has_bi = '比' in all_shishen or '劫' in all_shishen
+
+        if gender == 'female':
+            # 女命：夫星=官杀，比劫争夫
+            has_guan = '官' in all_shishen or '杀' in all_shishen
+            if has_guan and has_bi:
+                results.append({
+                    'score_adj': -0.5,
+                    'note': '比劫争夫，感情易有竞争者出现'
+                })
+        else:
+            # 男命：妻星=财星，比劫夺财
+            has_cai = '财' in all_shishen or '才' in all_shishen
+            if has_cai and has_bi:
+                results.append({
+                    'score_adj': -0.5,
+                    'note': '比劫夺财，感情易有波折或竞争'
+                })
+
+    return results
 
 
 def _build_text(merged, layers, title):
@@ -455,34 +621,34 @@ class WuyuAnalyzer:
     def analyze_with_dayun(self, dayun_gz):
         """原局 + 大运。"""
         layers = [self._yuanju_layer, self._layer(dayun_gz, "大运")]
-        merged = _merge_layers(layers, self.gender)
+        merged = _merge_layers(layers, self.gender, scene="full")
         title  = f"原局 × {dayun_gz}大运 五运分析"
         return {"title": title, "layers": layers, "merged": merged,
                 "text": _build_text(merged, layers, title)}
 
     def analyze_with_liuyear(self, dayun_gz, year_gz):
-        """原局 + 大运 + 流年（必须提供大运）。"""
+        """原局 + 大运 + 流年（年运分析：流年为太岁，权重最高）。"""
         layers = [self._yuanju_layer, self._layer(dayun_gz, "大运"), self._layer(year_gz, "流年")]
-        merged = _merge_layers(layers, self.gender)
+        merged = _merge_layers(layers, self.gender, scene="yearly")
         title  = f"原局 × {dayun_gz}大运 × {year_gz}流年 五运分析"
         return {"title": title, "layers": layers, "merged": merged,
                 "text": _build_text(merged, layers, title)}
 
     def analyze_with_liuyue(self, dayun_gz, year_gz, month_gz):
-        """原局 + 大运 + 流年 + 流月（必须提供大运和流年）。"""
+        """原局 + 大运 + 流年 + 流月（月运分析：流月为应期焦点，流年仍为太岁）。"""
         layers = [self._yuanju_layer, self._layer(dayun_gz, "大运"),
                   self._layer(year_gz, "流年"), self._layer(month_gz, "流月")]
-        merged = _merge_layers(layers, self.gender)
+        merged = _merge_layers(layers, self.gender, scene="monthly")
         title  = f"原局 × {dayun_gz}大运 × {year_gz}流年 × {month_gz}流月 五运分析"
         return {"title": title, "layers": layers, "merged": merged,
                 "text": _build_text(merged, layers, title)}
 
     def analyze_with_liuri(self, dayun_gz, year_gz, month_gz, day_gz):
-        """原局 + 大运 + 流年 + 流月 + 流日（完整五层）。"""
+        """原局 + 大运 + 流年 + 流月 + 流日（日运分析：流日为当日焦点，流年为太岁，流月为应期）。"""
         layers = [self._yuanju_layer, self._layer(dayun_gz, "大运"),
                   self._layer(year_gz, "流年"), self._layer(month_gz, "流月"),
                   self._layer(day_gz, "流日")]
-        merged = _merge_layers(layers, self.gender)
+        merged = _merge_layers(layers, self.gender, scene="daily")
         title  = f"原局 × {dayun_gz}大运 × {year_gz}流年 × {month_gz}流月 × {day_gz}流日 五运分析"
         return {"title": title, "layers": layers, "merged": merged,
                 "text": _build_text(merged, layers, title)}

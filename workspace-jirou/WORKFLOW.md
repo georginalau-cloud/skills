@@ -1,164 +1,149 @@
 # 🏋️ 肌肉 Agent - 工作流规则
 
-> 本文档是肌肉 Agent 日常工作的执行规则说明。cron jobs 配置负责"何时触发"，本文档负责"触发后做什么"以及所有数据逻辑。
+> 本文档是肌肉 Agent 日常工作的执行规则说明。
+> cron jobs 配置负责"何时触发"，本文档负责"触发后做什么"以及所有数据逻辑。
+> **所有时间均为 Asia/Shanghai 时区。**
 
 ---
 
 ## 核心原则
 
-- **DD+1日发送 DD日的日报**
-- **Garmin 数据时间线**：睡眠 = DD-1日夜里 → DD日早上；其他活动 = DD日全天
-- **BMR 来源**：以 Garmin 数据为准，不再从有品秤读取
-- **体重存储**：`morning-scale` = 早晨数据，`evening-scale` = 晚间数据
+- **DD+1 日发送 DD 日的日报**（今天 07:55 发送的是昨天的日报）
+- **Garmin 数据在 DD+1 日 06:00 抓取 DD 日的数据**（因为睡眠数据需要次日才完整）
+- **缓存文件命名规则**：所有辅助文件以对应日期命名，如 `morning-scale-2026-05-17.md`
+- **日报归档前不删除辅助文件**：只有用户确认后才清理
 
 ---
 
-## 每日流程
+## 每日定时流程
 
-| # | 触发点 | 行为 | 数据目标 |
-|---|--------|------|---------|
-| 1 | **我睡醒** | 我主动通知肌肉 → 肌肉发出早安问候 | — |
-| 2 | **08:00**（或睡醒后） | 早晨体重提醒 → 接收图片 → OCR 识别 | `pending/YYYY-MM-DD-morning-scale.json` |
-| 3 | **10:00** | 早餐提醒 → 接收图片/文字 → 查询热量 | `pending/YYYY-MM-DD-breakfast.json` |
-| 4 | **10:30** | 早餐二次提醒（如未收到）→ 接收数据 | `pending/YYYY-MM-DD-breakfast.json` |
-| 5 | **12:30** | 午餐提醒 → 接收图片/文字 → 查询热量 | `pending/YYYY-MM-DD-lunch.json` |
-| 6 | **13:00** | 午餐二次提醒（如未收到）→ 接收数据 | `pending/YYYY-MM-DD-lunch.json` |
-| 7 | **19:30** | 晚餐提醒 → 接收图片/文字 → 查询热量 | `pending/YYYY-MM-DD-dinner.json` |
-| 8 | **20:00** | 晚餐二次提醒（如未收到）→ 接收数据 | `pending/YYYY-MM-DD-dinner.json` |
-| 9 | **22:00** | 晚上体重提醒 → 接收图片 → OCR 识别 | `pending/YYYY-MM-DD-evening-scale.json` |
-| 10 | **22:30** | 汇总提醒：所有仍有缺失的数据项 | — |
-| 11 | **23:59** | `gccli` 抓取当日 Garmin 数据 → 合并睡眠（DD-1夜→DD早）+ 活动（DD日）| `pending/Garmin-YYYY-MM-DD.json` |
-| 12 | **23:59**（紧接11）| Python 脚本生成日报 | `pending/DailyReport-YYYY-MM-DD.md` |
+> 以今天 = 2026-05-18（D 日）为例
+
+| 时间 | 任务 | 行为 | 发消息 |
+|------|------|------|--------|
+| **06:00** | 抓取 Garmin 昨日(D-1)数据 | Python 脚本抓取 2026-05-17 的 Garmin 数据，生成 `Garmin-2026-05-17.md` | ❌ 静默 |
+| **07:00** | 检查昨日(D-1) Garmin 文件 | 检查 `Garmin-2026-05-17.md` 是否存在，不存在则补抓 | ❌ 静默 |
+| **07:55** | 形成昨日(D-1)日报 | 见下方「日报生成与发送流程」 | ✅ announce |
+| **08:00** | 今日(D)早安及体重提醒 | 向用户问早安并提醒称重；检查 `morning-scale-2026-05-18.md` 是否存在，不存在则提醒 | ⚠️ 条件发送 |
+| **08:10** | 昨日(D-1)日报自愈检查 | 检查 2026-05-17 日报是否已生成/归档，补救失败才通知 | ⚠️ 仅失败时 |
+| **10:00** | 今日(D)问早餐 | 检查 `breakfast-2026-05-18.md` 是否存在，不存在则提醒 | ⚠️ 条件发送 |
+| **12:00** | 今日(D)问午餐 | 检查 `lunch-2026-05-18.md` 是否存在，不存在则提醒 | ⚠️ 条件发送 |
+| **19:30** | 今日(D)问晚餐 | 检查 `dinner-2026-05-18.md` 是否存在，不存在则提醒 | ⚠️ 条件发送 |
+| **21:00** | 检查 Garmin Token | 运行 `gccli auth status`，如果 token 无法保证到明日(D+1) 07:00 仍有效，则提醒更新 | ⚠️ 仅过期时 |
+| **22:00** | 今日(D)晚间体重提醒 | 检查 `evening-scale-2026-05-18.md` 是否存在，不存在则提醒 | ⚠️ 条件发送 |
 
 ---
 
-## 次日流程（DD+1日）
+## 全天被动响应（随时接收，自动记录）
 
-| # | 触发点 | 行为 |
-|---|--------|------|
-| 13 | **07:55** | **发送前先验证完整性**：读取日报内容，检查 Garmin 数据、三餐记录、体重记录是否齐全。
-- 完整（主要字段都有数据）：正常发送
-- 不完整（缺少≥1项核心数据）：在日报开头加 ⚠️ 说明缺失项，告知用户可补录后明天见完整版，然后发送
-- 绝不因数据不完整就静默不发 |
-| 14 | **07:55**（与13同触发）| 检查 Garmin token 效期，如无法维持到当晚 23:59，提醒用户重新登录 |
-| | 15 | **08:10 自愈检查** | 读取 `pending/DailyReport-YYYY-MM-DD.md`，验证完整性（同步骤13标准）
-- 完整或已有 ⚠️ 说明：静默退出
-- 发现应标注 ⚠️ 但未标注：主动发一条消息告知用户哪些数据缺失，请用户补录 |
+用户可在**任何时段**主动发送数据，肌肉立即处理并生成缓存文件。**如果用户在定时提醒之前就已经发了数据，缓存文件已存在，到时间点就不再重复提醒。**
+
+| 用户输入 | 处理逻辑 | 生成文件 |
+|---------|---------|---------|
+| 称重截图（早晨） | OCR 识别有品秤数据 → 立即保存 | `morning-scale-YYYY-MM-DD.md` |
+| 称重截图（晚间） | OCR 识别有品秤数据 → 立即保存 | `evening-scale-YYYY-MM-DD.md` |
+| 食物截图/描述 | 识图 → USDA 查询热量 → 立即保存 | `breakfast-YYYY-MM-DD.md` / `lunch-YYYY-MM-DD.md` / `dinner-YYYY-MM-DD.md` |
+
+**时间判断规则**：
+- 称重：06:00-18:00 → morning-scale；18:00 后 → evening-scale
+- 餐食：06:00-10:30 → breakfast；10:30-15:00 → lunch；15:00-22:00 → dinner
+
+**核心逻辑**：所有 cron 提醒任务在执行前都会先检查对应缓存文件是否已存在，已存在则静默跳过。所以用户提前发了数据 = 自动免提醒。
+
+---
+
+## 日报生成与发送流程（07:55 触发）
+
+1. **生成日报**：读取昨日(D-1)所有辅助缓存文件：
+   - `morning-scale-YYYY-MM-DD.md`
+   - `evening-scale-YYYY-MM-DD.md`
+   - `breakfast-YYYY-MM-DD.md`
+   - `lunch-YYYY-MM-DD.md`
+   - `dinner-YYYY-MM-DD.md`
+   - `Garmin-YYYY-MM-DD.md`
+   
+   按照 `templates/daily-report.md` 格式生成日报，命名为 `YYYY-MM-DD.md`
+
+2. **发送飞书**：将日报内容发送给用户
+
+3. **等待用户确认**：用户回复「确认」/「存档」/「存吧」
+
+4. **归档 + 清理**：
+   - 将日报移至 `memory/reports/YYYY-MM-DD.md`
+   - 删除该日期的所有辅助缓存文件
+   
+   **⚠️ 如果用户没有确认，就一直等着，不能删除辅助文件，直到用户确认为止。**
 
 ---
 
 ## Garmin 数据规则
 
-### 时间线定义
+### 抓取时间线
 
-| 数据类型 | Garmin 日期 | 实际时间 |
-|---------|------------|---------|
-| 睡眠 | DD日 | DD-1日夜里 → DD日早上 |
-| 步数 | DD日 | DD日全天 |
-| 活动消耗 | DD日 | DD日全天 |
-| 静息心率 / HRV | DD日 | DD日测量值 |
+| 时间 | 动作 | 说明 |
+|------|------|------|
+| 06:00 (D+1日) | 主抓取 | 抓取 D 日完整数据（含 D 日夜间→D+1 早晨的睡眠） |
+| 07:00 (D+1日) | 兜底检查 | 06:00 失败时补抓 |
 
-### 日报中的睡眠标注
+### 数据内容
 
-日报中睡眠部分应标注为「DD-1夜→DD早」，明确说明是前一天夜里的睡眠。
+| 数据类型 | 说明 |
+|---------|------|
+| 睡眠 | D 日夜里 → D+1 日早上（Garmin 按入睡日期归属） |
+| 步数 | D 日全天 |
+| 活动消耗 | D 日全天 |
+| 静息心率 / HRV | D 日测量值 |
+| BMR | D 日数据（以 Garmin 为准，不从有品秤读取） |
 
 ### Token 维护
 
-- 07:55 检查 token 效期
-- 如 token 在 23:59 前过期，立即提醒用户重新登录
+- 21:00 检查 token 有效期
+- 如 token 在明日 07:00 前过期，立即提醒用户重新登录
 - 重新登录命令：`gccli auth login georginalau@163.com`
 
 ---
 
-## 体重数据规则
-
-| 时段 | 文件名 | 字段说明 |
-|------|--------|---------|
-| 早晨 | `YYYY-MM-DD-morning-scale.json` | `weight_kg`, `body_fat_pct`, `muscle_rate_pct`, `visceral_fat`, `water_pct`, `protein_pct`, `bone_mass_kg` |
-| 晚间 | `YYYY-MM-DD-evening-scale.json` | 同上 |
-
-> BMR 不从有品秤读取，以 Garmin 数据为准。
-
----
-
-## 三餐数据规则
-
-每个三餐 JSON 结构：
-
-```json
-{
-  "date": "YYYY-MM-DD",
-  "meal": "breakfast|lunch|dinner",
-  "items": [
-    {"name": "食物名", "weight_g": 克数, "calories": 大卡}
-  ],
-  "total_calories": 数字,
-  "notes": "备注"
-}
-```
-
-- 热量估算优先使用 USDA 数据库
-- USDA 查不到的用参考值
-- 用户主动提供的数据以用户为准
-
----
-
-## 日报生成规则
-
-1. 合并 `morning-scale` / `evening-scale` 数据（如有）
-2. 合并三餐数据
-3. 合并 Garmin 数据（活动 + 睡眠，睡眠需标注日期）
-4. 计算热量缺口 = 总摄入 - 总消耗
-5. 生成 markdown 格式日报
-6. 保存到 `pending/DailyReport-YYYY-MM-DD.md`
-
-### 日报必须包含的 Sections
-
-- 身体数据（体重、体脂、肌肉、内脏脂肪、HRV）
-- 睡眠情况（得分、时长、各阶段时长、comments）
-- 热量情况（总摄入、总消耗、缺口）
-- 摄入明细（三餐分列）
-- 消耗明细（步数、活动消耗）
-- 运动记录（如有）
-- 点评
-
----
-
-## 清理规则
-
-触发条件：用户回复「确认」后（当日 DD 确认 → 删除 DD 的辅助文件）
-
-清理范围：`pending/` 目录下对应日期的所有文件，包括：
-- `*morning-scale.json`
-- `*evening-scale.json`
-- `*-breakfast.json`
-- `*-lunch.json`
-- `*-dinner.json`
-- `Garmin-YYYY-MM-DD.json`
-- `DailyReport-YYYY-MM-DD.md`（移到 reports 后原位置删除）
-
-保留：`reports/Report-YYYY-MM-DD.md`（正式归档日报）
-
-08:10 兜底清理：若发现已确认日报对应的辅助文件仍有残留，直接清理（不做二次确认）。
-
----
-
-## 数据存储路径汇总
+## 数据存储路径
 
 所有路径均为相对于 workspace 的相对路径，**禁止使用绝对路径**。
 
 ```
 memory/
-├── pending/                          # 当日临时数据
-│   ├── YYYY-MM-DD-morning-scale.json
-│   ├── YYYY-MM-DD-evening-scale.json
-│   ├── YYYY-MM-DD-breakfast.json
-│   ├── YYYY-MM-DD-lunch.json
-│   ├── YYYY-MM-DD-dinner.json
-│   ├── Garmin-YYYY-MM-DD.json
-│   └── DailyReport-YYYY-MM-DD.md    # 待确认日报
-└── reports/                          # 正式归档
-    └── Report-YYYY-MM-DD.md         # 用户确认后保存
+├── pending/                              # 当日临时数据（缓存文件）
+│   ├── morning-scale-YYYY-MM-DD.md       # 早晨体重
+│   ├── evening-scale-YYYY-MM-DD.md       # 晚间体重
+│   ├── breakfast-YYYY-MM-DD.md           # 早餐
+│   ├── lunch-YYYY-MM-DD.md              # 午餐
+│   ├── dinner-YYYY-MM-DD.md             # 晚餐
+│   ├── Garmin-YYYY-MM-DD.md             # Garmin 数据
+│   └── YYYY-MM-DD.md                    # 待确认日报
+└── reports/                              # 正式归档
+    └── YYYY-MM-DD.md                    # 用户确认后保存
 ```
 
-> ⚠️ 禁止使用 `~/.openclaw/workspace-jirou/memory/...` 等绝对路径。所有文件操作必须使用 workspace 相对路径（相对于 `~/.openclaw/workspace-jirou/`）。
+---
+
+## 清理规则
+
+**触发条件**：用户回复「确认」后
+
+**清理范围**：`pending/` 目录下对应日期的所有文件：
+- `morning-scale-YYYY-MM-DD.md`
+- `evening-scale-YYYY-MM-DD.md`
+- `breakfast-YYYY-MM-DD.md`
+- `lunch-YYYY-MM-DD.md`
+- `dinner-YYYY-MM-DD.md`
+- `Garmin-YYYY-MM-DD.md`
+- `YYYY-MM-DD.md`（日报原文件，已归档到 reports/）
+
+**08:10 兜底清理**：若发现已归档日报对应的辅助文件仍有残留，直接清理。
+
+---
+
+## ⛔ 禁止事项
+
+1. **禁止生成"检查清单状态"类消息** — 不生成带有 ✅❌🧹📊 emoji 的状态列表
+2. **禁止在没有用户确认的情况下删除辅助文件**
+3. **禁止使用绝对路径**
+4. **禁止操作其他 agent 的 workspace**
+5. **Heartbeat 已永久禁用** — 所有定时任务由 cron 管理

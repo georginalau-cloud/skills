@@ -17,23 +17,33 @@ from datetime import datetime
 from pathlib import Path
 from collections import Counter
 
-# ─── 基金列表 ───
-FUNDS = {
-    "166002": {"name": "中欧新蓝筹A"},
-    "006751": {"name": "富国互联科技A"},
-    "163402": {"name": "兴全趋势投资"},
-    "004477": {"name": "嘉实沪港深回报"},
-    "001371": {"name": "富国沪港深价值精选A"},
-    "166005": {"name": "中欧价值发现A"},
-    "160706": {"name": "沪深300LOF"},
-    "001668": {"name": "汇添富全球移动互联A"},
-    "000979": {"name": "景顺长城沪港深精选A"},
-    "118001": {"name": "易方达亚洲精选"},
-    "004965": {"name": "泓德致远混合A"},
-    "450009": {"name": "国富中小盘A"},
-    "519069": {"name": "汇添富价值精选A"},
-    "006113": {"name": "汇添富创新医药A"},
-}
+# ─── 基金列表（从统一 holdings.json 读取）───
+_HOLDINGS_PATH = Path(__file__).parent.parent.parent.parent / "holdings.json"
+
+def _load_funds_from_holdings():
+    if _HOLDINGS_PATH.exists():
+        with open(_HOLDINGS_PATH, encoding='utf-8') as f:
+            h = json.load(f)
+        return {code: {"name": info["name"]} for code, info in h.get("funds", {}).items()}
+    # 兜底硬编码（holdings.json 不存在时）
+    return {
+        "166002": {"name": "中欧新蓝筹A"},
+        "006751": {"name": "富国互联科技A"},
+        "163402": {"name": "兴全趋势投资"},
+        "004477": {"name": "嘉实沪港深回报"},
+        "001371": {"name": "富国沪港深价值精选A"},
+        "166005": {"name": "中欧价值发现A"},
+        "160706": {"name": "沪深300LOF"},
+        "001668": {"name": "汇添富全球移动互联A"},
+        "000979": {"name": "景顺长城沪港深精选A"},
+        "118001": {"name": "易方达亚洲精选"},
+        "004965": {"name": "泓德致远混合A"},
+        "450009": {"name": "国富中小盘A"},
+        "519069": {"name": "汇添富价值精选A"},
+        "006113": {"name": "汇添富创新医药A"},
+    }
+
+FUNDS = _load_funds_from_holdings()
 
 OUTPUT_DIR = Path(__file__).parent.parent / "references"
 OUTPUT_MD = OUTPUT_DIR / "fund_holdings.md"

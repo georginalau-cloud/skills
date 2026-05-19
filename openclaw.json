@@ -86,6 +86,18 @@
         "workspace": "/Users/georginalau/.openclaw/workspace-guanjia",
         "agentDir": "/Users/georginalau/.openclaw/agents/guanjia/agent",
         "tools": {},
+        "heartbeat": {
+          "every": "2h",
+          "target": "last",
+          "lightContext": true,
+          "isolatedSession": true,
+          "activeHours": {
+            "start": "08:00",
+            "end": "23:00",
+            "timezone": "Asia/Shanghai"
+          },
+          "prompt": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
+        },
         "groupChat": {
           "mentionPatterns": [
             "@管家",
@@ -101,16 +113,7 @@
         "agentDir": "/Users/georginalau/.openclaw/agents/jirou/agent",
         "tools": {},
         "heartbeat": {
-          "every": "30m",
-          "target": "last",
-          "lightContext": true,
-          "isolatedSession": true,
-          "activeHours": {
-            "start": "07:00",
-            "end": "23:00",
-            "timezone": "Asia/Shanghai"
-          },
-          "prompt": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
+          "enabled": false
         },
         "groupChat": {
           "mentionPatterns": [
@@ -201,7 +204,7 @@
       "defaultAgent": "guanjia",
       "groups": {
         "*": {
-          "mentionMode": "agent",
+          "mentionMode": "default",
           "agents": {
             "guanjia": {
               "requireMention": false

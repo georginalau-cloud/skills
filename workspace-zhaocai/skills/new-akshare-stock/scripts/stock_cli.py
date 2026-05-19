@@ -51,7 +51,7 @@ def get_board_concept():
 
 def get_fund_flow(stock):
     """资金流向"""
-    df = stock_individual_fund_flow(stock=stock, market="sh")
+    df = ak.stock_individual_fund_flow(stock=stock, market="sh")
     return df.to_dict(orient='records')
 
 

@@ -178,101 +178,189 @@ def _score_day(day_gz, day_gan, all_zhis):
 def _compute_lucky(day_gan, day_gan_shishen, day_zhi_shishen, day_zhi, day_cangygan,
                    yong_shen, yong_wuxing,
                    has_chong, has_xing, has_he, has_sanhe,
-                   day_analysis):
+                   day_analysis, relations=None, ji_shen=None, xi_shen=None):
     """
     根据流日十神与命局的互动关系，动态计算当日幸运色、食物、方位说明。
 
-    核心思路：
-    - 流日天干决定当日能量主轴（财？官？食？伤？）
-    - 流日地支与命局的冲合决定能量强弱（冲则强刑则压力，合则稳定）
-    - 用神色为基础底色，流日十神色为当日强化色，忌神色为规避色
+    核心思路（v2 增强）：
+    1. 用神色为基础底色
+    2. 流日地支关系按力量排序，最强关系主导颜色调整
+    3. 病药通关：如果当日忌神五行被强化（三合/三会忌神局），需要用通关五行的颜色来化解
+    4. 天干十神作为辅助参考，不再作为主导
+
+    参数新增：
+    - relations: zhi_relations.analyze_zhi_relations() 的完整结果（含 weight）
+    - ji_shen: 忌神五行列表（如 ['土']）
+    - xi_shen: 喜神五行列表（如 ['木']）
     """
-    add_colors = []    # 需要加强的颜色
-    avoid_colors = []  # 需要规避的颜色
-    foods = []         # 食物建议
-    note_parts = []    # 说明文字片段
+    add_colors = []
+    avoid_colors = []
+    foods = []
+    note_parts = []
 
     # 基础底色：用神五行对应色
     base_colors = LUCKY_COLORS.get(yong_shen, [])
 
-    # ── 1. 流日天干十神主导 ──────────────────────────────────────────
+    # 忌神/喜神默认值
+    if ji_shen is None:
+        ji_shen = []
+    if xi_shen is None:
+        xi_shen = []
+
+    # ── 1. 力量主导：根据当日最强关系决定颜色调整 ─────────────────────
+    dominant_element = None
+    dominant_weight = 0
+    dominant_positive = True
+
+    if relations and relations.get('relations'):
+        rel_list = relations['relations']
+        if rel_list:
+            dominant = rel_list[0]  # 已按 weight 排序，第一个最强
+            dominant_element = dominant.get('element', '')
+            dominant_weight = abs(dominant.get('weight', 0))
+            dominant_positive = dominant.get('is_positive', True)
+            dominant_type = dominant.get('type', '')
+            dominant_name = dominant.get('name', '')
+
+            # 力量阈值判断
+            if dominant_weight >= 3.0:
+                # 三会/三合级别（极强）
+                if dominant_positive:
+                    if dominant_element == yong_shen:
+                        # 用神五行被极强聚合 → 大吉，强化用神色
+                        add_colors += LUCKY_COLORS.get(yong_shen, [])
+                        note_parts.append(f'今日{dominant_name}，用神{yong_shen}大旺，运势极佳，大胆用{yong_shen}色')
+                    elif dominant_element in ji_shen:
+                        # 忌神五行被极强聚合 → 需要通关！
+                        # 病药通关逻辑：忌神旺 → 用通关五行的颜色
+                        tong_guan = _get_tongguan_element(dominant_element, yong_shen)
+                        if tong_guan:
+                            add_colors += LUCKY_COLORS.get(tong_guan, [])
+                            note_parts.append(f'今日{dominant_name}，忌神{dominant_element}极旺，需{tong_guan}色通关化解')
+                        else:
+                            # 无通关，直接用用神色对抗
+                            add_colors += LUCKY_COLORS.get(yong_shen, [])
+                            note_parts.append(f'今日{dominant_name}，忌神{dominant_element}极旺，用{yong_shen}色对抗')
+                        # 忌神色必须规避
+                        avoid_colors += LUCKY_COLORS.get(dominant_element, [])
+                    else:
+                        # 非用神非忌神的五行被聚合
+                        note_parts.append(f'今日{dominant_name}，{dominant_element}五行极强')
+                else:
+                    # 负面关系（冲/刑）且力量极强
+                    # 被冲的五行需要保护 → 加强被冲五行的颜色
+                    add_colors += ['白色', '金色', '银色']  # 金色系稳定
+                    note_parts.append(f'今日{dominant_name}，动荡极大，白金银色系稳住气场')
+
+            elif dominant_weight >= 2.0:
+                # 六合/六冲级别（中等）
+                if not dominant_positive:
+                    # 有冲/刑 → 收敛
+                    add_colors += ['白色', '金色']
+                    avoid_colors += ['大红色', '正红色']
+                    note_parts.append(f'今日{dominant_name}，宜静不宜躁，白金色系可稳住气场')
+                else:
+                    # 有合 → 稳定，可加强用神色
+                    note_parts.append(f'今日{dominant_name}，运势稳聚，用神{yong_shen}色可以发挥')
+
+            elif dominant_weight >= 1.0:
+                # 半三合/六害/三刑级别（较弱）
+                if not dominant_positive:
+                    note_parts.append(f'今日{dominant_name}，小有压力，注意情绪')
+                else:
+                    note_parts.append(f'今日{dominant_name}，小有助力')
+    else:
+        # 没有传入 relations，降级使用旧的布尔逻辑
+        if has_chong:
+            add_colors += ['白色', '金色']
+            avoid_colors += ['大红色', '正红色']
+            note_parts.append('今日地支与命局有冲，宜静不宜躁，白金色系可稳住气场')
+        elif has_xing:
+            add_colors += ['白色', '银色']
+            avoid_colors += ['红色', '橙色']
+            note_parts.append('今日地支与命局有刑，压力略重，白银色系化煞')
+        elif has_he or has_sanhe:
+            note_parts.append('今日地支与命局有合，运势稳聚，用神色可以发挥')
+
+    # ── 2. 病药通关：检查当日是否有忌神被强化的情况 ─────────────────────
+    # （如果第1步已经处理了极强忌神局，这里不重复）
+    if relations and relations.get('relations') and not any('忌神' in n for n in note_parts):
+        for rel in relations['relations']:
+            rel_elem = rel.get('element', '')
+            rel_weight = abs(rel.get('weight', 0))
+            if rel_elem in ji_shen and rel.get('is_positive', False) and rel_weight >= 2.0:
+                # 忌神五行被中等以上力量聚合
+                tong_guan = _get_tongguan_element(rel_elem, yong_shen)
+                if tong_guan and tong_guan not in [c.replace('色','') for c in add_colors]:
+                    add_colors += LUCKY_COLORS.get(tong_guan, [])[:1]
+                    note_parts.append(f'{rel_elem}忌神有聚合，{tong_guan}色通关')
+                break  # 只处理最强的一个忌神聚合
+
+    # ── 3. 喜神色作为辅助加强 ──────────────────────────────────────────
+    if xi_shen:
+        for xs in xi_shen:
+            xs_colors = LUCKY_COLORS.get(xs, [])
+            if xs_colors and xs_colors[0] not in add_colors and xs_colors[0] not in avoid_colors:
+                add_colors.append(xs_colors[0])
+
+    # ── 4. 天干十神作为辅助参考（不再主导） ────────────────────────────
     gan_hint = SHISHEN_COLOR_HINTS.get(day_gan_shishen, '')
-    if gan_hint:
+    if gan_hint and not note_parts:
+        # 只有在没有更强的地支关系主导时，才用天干十神
         note_parts.append(f'今日天干{day_gan_shishen}当令，{gan_hint}')
 
     food_hint = SHISHEN_FOOD_HINTS.get(day_gan_shishen, '')
     if food_hint:
         foods.append(food_hint)
 
-    # ── 2. 流日地支藏干副十神（影响藏干食物） ─────────────────────────
-    if day_cangygan and len(day_cangygan) > 1:
-        # 多藏干（杂气月），说明日子能量复杂，提醒注意
-        cang_shishen = [get_ten_god_cached(day_cangygan[i])(day_gan) for i in range(len(day_cangygan))]
-        note_parts.append(f'地支{day_zhi}藏多气（{"、".join(cang_shishen)}），今日能量多元，需抓主要矛盾')
-
-    # ── 3. 刑冲合影响幸运色强度 ──────────────────────────────────────
-    if has_chong:
-        # 有冲 → 能量强且动荡，颜色要收敛一些，不宜过旺
-        # 冲代表变化和压力，可加强金水色（白、黑）来稳定
-        add_colors += ['白色','金色']
-        avoid_colors += ['大红色','正红色']
-        note_parts.append('今日地支与命局有冲，能量强动，宜静不宜躁，白金色系可稳住气场')
-    elif has_xing:
-        # 有刑 → 压力和摩擦，加强金色化煞
-        add_colors += ['白色','银色']
-        avoid_colors += ['红色','橙色']
-        note_parts.append('今日地支与命局有刑，压力略重，白银色系化煞，忌火色过旺冲动')
-    elif has_he or has_sanhe:
-        # 合/三合 → 能量稳定汇聚，可适当加强用神色
-        note_parts.append('今日地支与命局有合，运势稳聚，用神火色可以发挥')
-
-    # ── 4. 用神忌神动态调整 ──────────────────────────────────────────
-    # 如果流日十神是用神相关的，强化之；是忌神相关的，规避之
-    GOOD_SHISHEN = {'官','财','才','食','印','比'}  # 用神常见十神
-    BAD_SHISHEN  = {'杀','劫','伤','枭'}             # 忌神常见十神
-
-    if day_gan_shishen in GOOD_SHISHEN:
-        # 用神相关的十神，可以加强对应色
-        yong_colors = LUCKY_COLORS.get(yong_shen, [])
-        add_colors += yong_colors
-        note_parts.append(f'今日天干{day_gan_shishen}与命局用神相和，运势佳，用神色可以放心用')
-    elif day_gan_shishen in BAD_SHISHEN:
-        # 忌神相关的十神，需要用相克色来化解
-        # 如杀重→白金；伤重→金色；劫重→水色
-        if day_gan_shishen == '杀':
-            add_colors += ['白色','金色','黑色']
-            avoid_colors += ['红色','橙色']
-            note_parts.append('七杀当令日，白金黑色系化杀，忌红色火色激化')
-        elif day_gan_shishen == '伤':
-            add_colors += ['白色','金色']
-            avoid_colors += ['红色','紫色']
-            note_parts.append('伤官当令日，金白色制伤，忌火色过旺')
-        elif day_gan_shishen == '劫':
-            add_colors += ['黑色','深蓝色']
-            avoid_colors += ['红色','橙色']
-            note_parts.append('劫财当令日，黑深蓝色收敛，忌冲动火色')
-        elif day_gan_shishen == '枭':
-            add_colors += ['黑色','深蓝色']
-            avoid_colors += ['黄色','棕色']
-            note_parts.append('枭神当令日，水黑色化枭，忌土色克水')
-
     # ── 5. 综合颜色优先级合并 ────────────────────────────────────────
     final_colors = base_colors.copy()
     for c in add_colors:
         if c not in final_colors:
             final_colors.append(c)
-    # 避免色从结果中移除
     final_colors = [c for c in final_colors if c not in avoid_colors]
-    # 限制最多4种
     final_colors = final_colors[:4]
 
     note = '；'.join(note_parts) if note_parts else f'今日能量平稳，用神{yong_shen}色为主'
     return {
-        'add_colors':  add_colors,
+        'add_colors':   add_colors,
         'avoid_colors': avoid_colors,
-        'foods':       '；'.join(foods) if foods else f'今日饮食清淡为宜',
+        'foods':        '；'.join(foods) if foods else f'今日饮食清淡为宜',
         'note':         note,
     }
+
+
+def _get_tongguan_element(bing_element, yong_shen):
+    """
+    病药通关：根据"病"（被强化的忌神五行）和用神，找到通关五行。
+
+    通关原理：
+    - 病=土旺，用神=火 → 通关=金（土生金，金泄土气，同时金不克火）
+    - 病=金旺，用神=火 → 通关=水（金生水，水泄金气）但水克火，不好 → 用木（木克土生火）
+    - 病=水旺，用神=火 → 通关=木（水生木，木生火，完美通关）
+
+    五行相生链：木→火→土→金→水→木
+    通关五行 = 病所生的五行（泄病气），且不克用神
+    """
+    sheng_chain = {'木': '火', '火': '土', '土': '金', '金': '水', '水': '木'}
+    ke_chain = {'木': '土', '火': '金', '土': '水', '金': '木', '水': '火'}
+
+    # 方案1：病所生的五行（泄病气）
+    xie_bing = sheng_chain.get(bing_element, '')
+    if xie_bing and xie_bing != yong_shen:
+        # 检查泄病的五行是否克用神
+        if ke_chain.get(xie_bing) != yong_shen:
+            return xie_bing
+
+    # 方案2：克病的五行
+    for elem, target in ke_chain.items():
+        if target == bing_element and elem != yong_shen:
+            # 检查克病的五行是否也克用神
+            if ke_chain.get(elem) != yong_shen:
+                return elem
+
+    # 方案3：用神本身就是通关
+    return yong_shen
 
 
 def _merge_lucky_colors(base_colors, add_colors, avoid_colors):

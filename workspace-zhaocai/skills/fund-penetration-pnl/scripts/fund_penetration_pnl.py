@@ -16,23 +16,19 @@ import sys, json, re, time, requests
 from pathlib import Path
 from bs4 import BeautifulSoup
 
-# ── 用户基金持仓 ──────────────────────────────────────────
-MY_FUND_HOLDINGS = {
-    "163402": {"name": "兴全趋势投资",       "shares": 134513.34},
-    "006113": {"name": "汇添富创新医药A",     "shares": 1508.31},
-    "519069": {"name": "汇添富价值精选A",    "shares": 1127.23},
-    "166002": {"name": "中欧新蓝筹A",         "shares": 37630.83},
-    "000979": {"name": "景顺长城沪港深精选A", "shares": 4638.32},
-    "006751": {"name": "富国互联科技A",       "shares": 23739.17},
-    "004477": {"name": "嘉实沪港深回报",      "shares": 35096.95},
-    "001371": {"name": "富国沪港深价值精选A", "shares": 33887.86},
-    "166005": {"name": "中欧价值发现A",       "shares": 11491.47},
-    "160706": {"name": "沪深300LOF",         "shares": 18541.19},
-    "001668": {"name": "汇添富全球移动互联A", "shares": 4206.06},
-    "118001": {"name": "易方达亚洲精选",      "shares": 5978.46},
-    "004965": {"name": "泓德致远混合A",        "shares": 2415.48},
-    "450009": {"name": "国富中小盘A",         "shares": 1706.26},
-}
+# ── 用户基金持仓（从统一 holdings.json 读取）──────────────────
+import pathlib as _pathlib
+_HOLDINGS_PATH = _pathlib.Path(__file__).parent.parent.parent.parent / "holdings.json"
+
+def _load_holdings():
+    if _HOLDINGS_PATH.exists():
+        with open(_HOLDINGS_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    return {"stocks": {}, "etfs": {}, "funds": {}}
+
+_H = _load_holdings()
+MY_FUND_HOLDINGS = {code: {"name": info["name"], "shares": info["shares"]}
+                    for code, info in _H.get("funds", {}).items()}
 
 FUND_HOLDINGS_PATH = Path(__file__).parent.parent.parent / "market-alert" / "references" / "fund_holdings.json"
 
