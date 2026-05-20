@@ -20,3 +20,6 @@
 **/sessions/
 # 忽略临时测试 API 的脚本
 **/test_api_key_validation.py
+
+# 忽略 openclaw 运行时状态文件
+**/.openclaw/
