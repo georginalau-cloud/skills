@@ -197,7 +197,8 @@
 
 **例子：**
 用户说："看看今天日运" 或 cron自动触发
-→ 调用 `/opt/homebrew/bin/python3 ~/.openclaw/workspace-suanming/skills/suanming-bazi-analyzer/bin/bazi --year 1990 --month 1 --day 8 --hour 14 --minute 54 --gender female --city 西安 --mode daily --liuyear 2026 --liuyue-month 5 --liuri-date 2026-05-01`
+→ 调用 `/opt/homebrew/bin/python3 ~/.openclaw/workspace-suanming/skills/suanming-bazi-analyzer/bin/bazi --year 1990 --month 1 --day 8 --hour 14 --minute 54 --gender female --city 西安 --mode daily --liuyear 2026 --liuri-date 2026-05-01`
+→ 注意：不传 --liuyue-month，让脚本根据 --liuri-date 自动推算所在流月
 → 按上述格式输出：阳历+阴历+干支 + 各模块融合输出 + 字数统计 + 署名
 
 ### 其他技能

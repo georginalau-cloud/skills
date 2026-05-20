@@ -23,19 +23,17 @@ _我的工具小抄本，记录当前配置和所有能力。_
 | video-frames | 视频帧提取 | ✅ |
 | weather | 天气查询 | ✅ |
 
-## Workspace Skills（workspace-guanjia/skills，9个）
+## Workspace Skills（workspace-guanjia/skills，7个）
 
 | 技能 | 功能 |
 |------|------|
-| feishu-calendar | 飞书日历 |
+| cangjie | 仓颉造字（写作风格蒸馏） |
 | fliggy-flight-monitor | 飞猪机票监控 |
-| garmin-connect | Garmin 健康数据 |
-| isolated-chrome | 独立 Chrome |
-| news-summary | 新闻摘要 |
-| pdf-ocr | PDF 扫描件转 Word |
-| progress-reporter | 定时进度汇报 |
-| qveris | 动态工具搜索 |
-| trending-now | 趋势监控 |
+| minimax-image-understanding | 图片理解 |
+| nox-grill-me | 压力测试计划/设计 |
+| self-verify | 自检验证 |
+| vau-writer | VAU 写作 |
+| wukong | 名人思维蒸馏与召唤 |
 
 ## 已归档 Skills（deprecated，16个）
 
@@ -88,9 +86,9 @@ pkill -f openclaw && openclaw gateway restart  # 强制重启
 
 给弟弟们传技能时，复制到各自workspace的skills目录：
 
-- **招财 (zhaocai)**: `~/.openclaw/workspace-zhaocaimiao/skills/`
-- **算命 (suanming)**: `~/.openclaw/workspace-suanmingmiao/skills/`
-- **肌肉 (jirou)**: `~/.openclaw/workspace-jiroumiao/skills/`
+- **招财 (zhaocai)**: `~/.openclaw/workspace-zhaocai/skills/`
+- **算命 (suanming)**: `~/.openclaw/workspace-suanming/skills/`
+- **肌肉 (jirou)**: `~/.openclaw/workspace-jirou/skills/`
 
 ---
 

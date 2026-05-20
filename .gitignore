@@ -1,21 +1,21 @@
 # 忽略所有层级下的浏览器用户数据和缓存
-   **/user-data/
-   **/Cache/
-   **/GPUCache/
-   **/ShaderCache/
-   browser/
-   
-   # 忽略所有层级下的 Python 虚拟环境与编译缓存
-   **/venv/
-   **/.venv/
-   **/__pycache__/
-   *.pyc
-   
-   # 忽略所有层级下的日志与临时文件
-   **/logs/
-   *.log
-   .DS_Store
-   .env
+**/user-data/
+**/Cache/
+**/GPUCache/
+**/ShaderCache/
+browser/
+
+# 忽略所有层级下的 Python 虚拟环境与编译缓存
+**/venv/
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# 忽略所有层级下的日志与临时文件
+**/logs/
+*.log
+.DS_Store
+.env
 
 # 忽略所有 Agent 的历史会话日志
 **/sessions/
