@@ -1,40 +1,51 @@
-# TOOLS.md - 本地笔记
+# TOOLS.md - 招财工具配置
 
-Skills 定义了_工具怎么工作_。这是_你的细节_——属于你的设置。
+## 数据源优先级
 
-## 这里放什么
+### A股实时行情
+1. **push2.eastmoney.com**（东方财富，最准确，首选）
+2. **qt.gtimg.cn**（腾讯财经，无需API Key）
+3. **akshare stock_zh_a_spot_em()**（批量全A股）
+4. **hq.sinajs.cn**（新浪，最后兜底，可能限流）
 
-比如：
+### 港美股
+1. **qt.gtimg.cn**（腾讯，hk/us前缀）
+2. **query1.finance.yahoo.com**（Yahoo Finance）
 
-- 摄像头名称和位置
-- SSH 主机和别名
-- TTS 首选声音
-- 音箱/房间名称
-- 设备昵称
-- 任何环境特定的东西
+### 基金净值
+1. **fundgz.1234567.com.cn**（天天基金盘中估值）
+2. **fundmobapi.eastmoney.com**（批量GSZ）
+3. **api.fund.eastmoney.com/f10/lsjz**（QDII历史净值）
 
-## 例子
+### 外汇
+1. **hq.sinajs.cn**（新浪，9种货币对）
+2. **push2.eastmoney.com**（东方财富兜底）
+3. **akshare currency_boc_safe()**（中行牌价，最终兜底）
 
-```markdown
-### 摄像头
+## 持仓数据
 
-- living-room → 主区域，180° 广角
-- front-door → 入口，移动侦测
+统一从 `holdings.json` 读取，调仓后只需更新这一个文件。
 
-### SSH
+## Workspace Skills（11个）
 
-- home-server → 192.168.1.100, user: admin
+| 技能 | 用途 |
+|------|------|
+| a-stock-trading-assistant | 个股分析+六层决策框架 |
+| fund-penetration-pnl | 基金穿透盈亏（合并版） |
+| market-alert | 市场异动监控 |
+| new-akshare-stock | akshare CLI |
+| stock-price-query | 多市场查价（腾讯API） |
+| tail-position-overnight | 尾盘选股 |
+| fundamental-stock-analysis | 基本面分析（prompt） |
+| investment-team | 投资团队调度 |
+| minimax-image-understanding | 图片理解 |
+| self-verify | 自检验证 |
+| shared | 统一价格获取模块 |
 
-### TTS
+## 关键脚本路径
 
-- 首选声音："Nova"（温暖，略英式）
-- 默认音箱：Kitchen HomePod
-```
-
-## 为什么分开？
-
-Skills 是共享的。你的设置是你的。保持它们分开意味着你可以更新 skills 而不丢失你的笔记，也可以分享 skills 而不泄露你的基础设施。
-
----
-
-添加任何能帮你工作的。这个是你的 cheat sheet。
+- 市场异动: `skills/market-alert/scripts/scan_alert.py`
+- 基金穿透: `skills/fund-penetration-pnl/scripts/fund_penetration_pnl.py`
+- 收盘分析: `skills/fund-penetration-pnl/scripts/close_analysis.py`
+- 持仓更新: `skills/market-alert/scripts/update_fund_holdings.py`
+- 尾盘选股: `skills/tail-position-overnight/scripts/tail_screen.py`

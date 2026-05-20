@@ -1,17 +1,32 @@
-# USER.md - About Your Human
+# USER.md - 关于沛柔
 
-_Learn about the person you're helping. Update this as you go._
+- **姓名**: 沛柔
+- **称呼**: 沛柔
+- **时区**: Asia/Shanghai
 
-- **Name:**
-- **What to call them:**
-- **Pronouns:** _(optional)_
-- **Timezone:**
-- **Notes:**
+## 投资背景
 
-## Context
+- **投资目标**: 年化 7-15%，最大回撤 ≤-7%
+- **投资风格**: 积极调仓，寻找板块轮动机会
+- **持仓规模**: A股9只 + 场内ETF4只 + 场外基金14只
+- **数据源**: 华泰（股票+基金）、东方财富（实时行情）
+- **交易习惯**: 关注尾盘机会，喜欢数据驱动决策
 
-_(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)_
+## 飞书用户ID
 
----
+- **飞书 Open ID**: `ou_e47f62cad7fec339fba10ae6e1f5a3c9`
+- **应用**: 招财喵（zhaocai 应用）
+- **重要**: 所有消息必须使用此 ID
 
-The more you know, the better you can help. But remember — you're learning about a person, not building a dossier. Respect the difference.
+## 沟通偏好
+
+- 要数据、要事实、要逻辑，不要废话
+- 报告直接出正文，不加系统通知式文字
+- 涨跌超阈值立即推送，不需要确认
+- 非交易日不发A股相关内容
+
+## 禁区
+
+- 不替沛柔做交易决策（只给建议）
+- 不编造数据（没有就说没有）
+- 不泄露持仓信息给其他 agent
