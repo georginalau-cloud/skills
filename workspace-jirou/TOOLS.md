@@ -314,46 +314,40 @@ python3 ~/.openclaw/workspace-jirou/skills/usda-lookup/usda_lookup.py \
 
 ---
 
-## 7. OpenClaw message 工具（飞书消息发送）
+## 7. OpenClaw 消息发送机制
 
 ### 工作原理
 
-飞书消息通过 OpenClaw 内置 `message` 工具发送，使用飞书官方 SDK 长连接（WebSocket）模式，无需在 Agent 代码里管理 WebSocket 连接或配置 Webhook URL。
+飞书消息通过 OpenClaw 的 cron delivery 机制发送。Agent 不需要自己管理消息队列或 WebSocket 连接。
 
 ### 消息发送流程
 
-1. Agent 调用 `notify.js` 中的函数（`sendText` / `sendCard` / `sendReminder` / `sendConfirmation` / `sendError`）
-2. `notify.js` 将消息保存到 `memory/pending/msg-<timestamp>-<type>.json`
-3. OpenClaw cron 系统检测到 `memory/pending/` 中的消息文件
-4. cron 系统通过 `message` 工具（WebSocket 长连接）将消息发送到飞书
-5. 发送成功后消息文件被清理
+1. cron 定时触发 agent session（`payload.kind: "agentTurn"`）
+2. Agent 在 session 中生成内容（日报、提醒等）
+3. 根据 cron job 的 `delivery.mode` 配置决定是否发送：
+   - `"announce"` — 将 agent 输出直接发送到飞书
+   - `"none"` — 静默执行，不发送消息（agent 可在 payload 中自行决定是否发送）
+4. 发送目标由 `delivery.to`（飞书 open_id）和 `delivery.accountId` 指定
 
-### 消息文件格式
+### delivery 模式说明
 
-```json
-{
-  "type": "text",
-  "content": "消息内容",
-  "timestamp": "2024-01-15T08:00:00.000Z"
-}
-```
-
-消息类型：
-- `text` — 纯文本消息
-- `card` — 飞书卡片消息（interactive 格式）
-- `reminder` — 提醒消息
-- `confirmation` — 操作确认消息
-- `error` — 错误通知
+| mode | 行为 | 适用场景 |
+|------|------|---------|
+| `announce` | 自动将 agent 输出发送到飞书 | 日报、定时推送 |
+| `none` | 不自动发送，agent 自行决定 | 条件提醒（检查文件存在才发） |
 
 ### 日报发送流程
 
-1. `scripts/daily-report-generator.py` 生成日报，保存到 `memory/pending/DailyReport-YYYY-MM-DD.md`
-2. OpenClaw cron 在次日 07:58 检测到该文件
-3. 通过 `message` 工具将日报内容发送到飞书
+1. cron `jirou-0755-daily-report` 在 07:55 触发 agent session
+2. Agent 读取 `memory/pending/` 下昨日所有缓存文件
+3. Agent 按模板生成日报，保存到 `memory/pending/YYYY-MM-DD.md`
+4. `delivery.mode: "announce"` 自动将日报发送到飞书
+5. 用户确认后 agent 归档到 `memory/reports/YYYY-MM-DD.md` 并清理 pending 文件
 
-```bash
-python3 ~/.openclaw/workspace-jirou/scripts/daily-report-generator.py \
-    --date 2024-01-15
-```
+### 条件提醒流程（如早餐提醒）
 
-输出日报文件：`~/.openclaw/workspace-jirou/memory/reports/2024-01-15.md`
+1. cron `jirou-1000-breakfast` 在 10:00 触发 agent session
+2. Agent 检查 `memory/pending/breakfast-{{TODAY}}.md` 是否存在
+3. 如果已存在 → 静默退出（`delivery.mode: "none"` 不会发送）
+4. 如果不存在 → Agent 主动发送提醒消息给用户
+

@@ -74,7 +74,13 @@ def load_scale_data(date_str: str, time_of_day: str) -> dict:
     Returns:
         秤数据字典，失败返回空字典
     """
-    filepath = os.path.join(PENDING_DIR, f'{date_str}-{time_of_day}-scale.json')
+    # 文件命名规则：morning-scale-YYYY-MM-DD.md（与 WORKFLOW.md 和 cron 一致）
+    filepath = os.path.join(PENDING_DIR, f'{time_of_day}-scale-{date_str}.md')
+    # 兼容旧格式 JSON 文件
+    if not os.path.exists(filepath):
+        filepath = os.path.join(PENDING_DIR, f'{time_of_day}-scale-{date_str}.json')
+    if not os.path.exists(filepath):
+        filepath = os.path.join(PENDING_DIR, f'{date_str}-{time_of_day}-scale.json')
     data = load_json_file(filepath)
     # 支持两种格式：
     #   1. 包裹格式（有 success + data 字段）：4/15 后的数据
@@ -99,8 +105,6 @@ def load_scale_data(date_str: str, time_of_day: str) -> dict:
         'bmr': raw.get('bmr_kcal') or raw.get('bmr'),
         'total_score': raw.get('total_score') or raw.get('score'),
     }
-    logger.info(f"{time_of_day}体重数据不存在：{filepath}")
-    return {}
 
 
 def load_meal_data(date_str: str, meal_type: str) -> dict:
@@ -114,12 +118,31 @@ def load_meal_data(date_str: str, meal_type: str) -> dict:
     Returns:
         餐食数据字典，失败返回空字典
     """
-    filepath = os.path.join(PENDING_DIR, f'{date_str}-{meal_type}.json')
-    data = load_json_file(filepath)
-    if data.get('items'):
-        logger.info(f"加载{meal_type}数据：{filepath}")
-        return data
-    logger.info(f"{meal_type}数据不存在：{filepath}")
+    # 文件命名规则：breakfast-YYYY-MM-DD.md（与 WORKFLOW.md 和 cron 一致）
+    filepath_md = os.path.join(PENDING_DIR, f'{meal_type}-{date_str}.md')
+    filepath_json = os.path.join(PENDING_DIR, f'{meal_type}-{date_str}.json')
+    filepath_old = os.path.join(PENDING_DIR, f'{date_str}-{meal_type}.json')
+
+    # 按优先级尝试加载
+    for filepath in [filepath_md, filepath_json, filepath_old]:
+        if os.path.exists(filepath):
+            data = load_json_file(filepath)
+            if data.get('items'):
+                logger.info(f"加载{meal_type}数据：{filepath}")
+                return data
+            # .md 文件可能不是 JSON 格式，尝试解析 markdown
+            if filepath.endswith('.md'):
+                # 如果是 markdown 格式的餐食记录，返回原始内容标记
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    if content:
+                        logger.info(f"加载{meal_type}数据（md格式）：{filepath}")
+                        return {"raw_content": content, "items": []}
+                except IOError:
+                    pass
+
+    logger.info(f"{meal_type}数据不存在")
     return {}
 
 
@@ -420,7 +443,21 @@ def generate_report(date_str: str) -> str:
         snack = load_meal_data(date_str, 'afternoon_snack')
 
     # ── 2. 获取 Garmin 数据 ──
-    garmin_raw = get_garmin_data(date_str)
+    # 优先从 cron 预抓取的文件读取（Garmin-YYYY-MM-DD.md）
+    garmin_file = os.path.join(PENDING_DIR, f'Garmin-{date_str}.md')
+    garmin_file_json = os.path.join(PENDING_DIR, f'Garmin-{date_str}.json')
+    garmin_raw = {}
+    if os.path.exists(garmin_file):
+        garmin_raw = load_json_file(garmin_file)
+        logger.info(f"从预抓取文件加载 Garmin 数据：{garmin_file}")
+    elif os.path.exists(garmin_file_json):
+        garmin_raw = load_json_file(garmin_file_json)
+        logger.info(f"从预抓取文件加载 Garmin 数据：{garmin_file_json}")
+
+    # 如果预抓取文件不存在或为空，实时抓取
+    if not garmin_raw:
+        logger.info("预抓取文件不存在，尝试实时抓取 Garmin 数据...")
+        garmin_raw = get_garmin_data(date_str)
     garmin = parse_garmin_summary(garmin_raw)
 
     # ── 3. 计算热量 ──
@@ -592,7 +629,7 @@ def main():
         default=datetime.now().strftime('%Y-%m-%d'),
         help='日期 YYYY-MM-DD（默认今天）'
     )
-    parser.add_argument('--output', help='输出文件路径（默认：memory/pending/DailyReport-YYYY-MM-DD.md）')
+    parser.add_argument('--output', help='输出文件路径（默认：memory/pending/YYYY-MM-DD.md）')
     parser.add_argument('--debug', action='store_true', help='启用调试日志')
 
     args = parser.parse_args()
@@ -611,11 +648,11 @@ def main():
         logger.error(f"日报生成失败：{e}", exc_info=True)
         sys.exit(1)
 
-    # 确定输出路径（默认保存到 pending 目录，供 OpenClaw cron 系统发送）
-    output_path = args.output or os.path.join(PENDING_DIR, f'DailyReport-{args.date}.md')
+    # 确定输出路径（默认保存到 pending 目录，命名为 YYYY-MM-DD.md）
+    output_path = args.output or os.path.join(PENDING_DIR, f'{args.date}.md')
     output_path = os.path.expanduser(output_path)
 
-    # 保存日报（pending 目录，待 OpenClaw cron 系统发送到飞书）
+    # 保存日报（pending 目录，待用户确认后归档到 reports/）
     dir_name = os.path.dirname(output_path)
     if dir_name:
         os.makedirs(dir_name, exist_ok=True)
