@@ -10,6 +10,7 @@
 import json
 import re
 import time
+import os
 import urllib.request
 from pathlib import Path
 
@@ -17,6 +18,44 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Referer": "https://fund.eastmoney.com/",
 }
+
+# ─── 代理绕过机制 ───────────────────────────────────────────────
+# 国内金融数据源（东方财富/腾讯/新浪/天天基金）不需要代理
+# 如果系统配置了代理（用于翻墙），反而会导致这些国内接口失败
+# 解决方案：对国内域名使用直连（no_proxy）
+
+_DIRECT_OPENER = None
+
+def _get_direct_opener():
+    """获取不走代理的 URL opener（用于国内金融数据源）"""
+    global _DIRECT_OPENER
+    if _DIRECT_OPENER is None:
+        # 创建一个不使用任何代理的 opener
+        proxy_handler = urllib.request.ProxyHandler({})
+        _DIRECT_OPENER = urllib.request.build_opener(proxy_handler)
+    return _DIRECT_OPENER
+
+
+def _urlopen_direct(url, timeout=10):
+    """直连模式打开 URL（绕过系统代理）"""
+    req = urllib.request.Request(url, headers=HEADERS)
+    opener = _get_direct_opener()
+    return opener.open(req, timeout=timeout)
+
+
+def _urlopen_with_fallback(url, timeout=10):
+    """先尝试直连，失败则尝试走代理"""
+    # 优先直连（国内金融数据源不需要代理）
+    try:
+        return _urlopen_direct(url, timeout=timeout)
+    except Exception:
+        pass
+    # 直连失败，尝试走系统代理（可能是在国外访问）
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception:
+        raise
 
 # ─── 持仓数据加载 ───────────────────────────────────────────────
 
@@ -67,6 +106,10 @@ def get_a_stock_prices(codes: list) -> dict:
     return result
 
 
+# 别名（兼容 stock_data.py 的导入）
+fetch_a_stock_prices = get_a_stock_prices
+
+
 def _fetch_push2(codes: list) -> dict:
     """P1: 东方财富 push2（最准确）"""
     secids = []
@@ -87,8 +130,7 @@ def _fetch_push2(codes: list) -> dict:
         url = (f"https://push2.eastmoney.com/api/qt/ulist.np/get"
                f"?fltt=2&invt=2&fields=f2,f3,f12,f14&secids={','.join(batch)}")
         try:
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with _urlopen_with_fallback(url, timeout=10) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
             for item in data.get('data', {}).get('diff', []):
                 code = str(item.get('f12', '')).zfill(6)
