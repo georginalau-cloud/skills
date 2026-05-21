@@ -616,8 +616,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "执行市场异动扫描。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n运行命令：\n```bash\ncd ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts && python3 scan_alert.py\n```\n\n根据脚本输出判断：\n- 有异动内容 → 通过飞书推送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）\n- 无异动（输出为空或「扫描完成: 0 条异动」）→ 静默退出，不发任何消息\n\n⚠️ 注意：heartbeat 也会做持仓异动扫描，但 heartbeat 是轻量快扫（仅检查阈值），本任务是完整的 scan_alert.py 脚本扫描（含基金穿透、成交量突变等更多维度）。两者互补不冲突。",
-        "timeoutSeconds": 120
+        "message": "执行市场异动扫描。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n运行命令：\n```bash\ncd ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts && python3 scan_alert.py\n```\n\n根据脚本输出判断：\n- 有异动内容 → 通过飞书推送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）\n- 无异动（输出为空或「扫描完成: 0 条异动」）→ 静默退出，不发任何消息\n\n⚠️ 如果脚本执行超时或报错（代理/网络问题），不要反复重试，直接静默退出。不要给用户发送技术报错信息（如\"代理问题\"\"Connection aborted\"等）。",
+        "timeoutSeconds": 180
       },
       "delivery": {
         "mode": "none",
@@ -648,8 +648,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "执行短线标的实时监控（验证今日晨报推荐的投资机会）。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n步骤：\n1. 读取 memory/pending/today-picks-{{TODAY}}.md 获取今日晨报推荐的标的列表\n   - 如果文件不存在，说明今日晨报未推荐标的，静默退出\n2. 使用 akshare 获取这些标的的实时行情（最新价、涨跌幅、成交量、换手率）\n3. 与开盘价对比，计算日内涨跌\n4. 汇报格式：\n\n```\n📋 短线验证 HH:MM\n\n[标的名] [代码] | 现价:XX | 涨跌:±X.XX% | 量比:X.X | 换手:X.X%\n...\n\n验证结论：晨报推荐逻辑是否兑现（简要1-2句）\n```\n\n5. 涨跌超±3%的标的用🔴🟢标记\n6. 收盘后（15:00-15:30）的最后一次扫描需要做完整复盘：命中率、盈亏模拟、经验总结，追加写入 memory/pending/today-picks-{{TODAY}}.md\n\n推送规则：\n- 有标的涨跌超±3% → 立即推送\n- 所有标的波动平稳 → 静默退出\n- 15:00后的收盘复盘 → 必须推送\n\n通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。",
-        "timeoutSeconds": 120
+        "message": "执行短线标的实时监控（验证今日晨报推荐的投资机会）。\n\n前置判断：\n1. 确认今天是A股交易日，非交易日静默退出\n2. 读取 memory/pending/today-picks-{{TODAY}}.md，文件不存在则静默退出\n\n执行（必须快速，不做复杂分析）：\n1. 从文件中提取标的代码列表\n2. 用 price_fetcher 获取实时价格（直连模式，不走代理）\n3. 计算涨跌幅\n\n输出规则：\n- 有标的涨跌超±3% → 推送简报\n- 所有标的波动平稳（<±3%）→ 静默退出，不发消息\n- 15:00后最后一次 → 必须推送收盘复盘\n\n推送格式（简洁）：\n```\n📋 短线验证 HH:MM\n🔴/🟢 [标的名] [代码] | ±X.XX% | ¥XX.XX\n验证：[1句话结论]\n```\n\n⚠️ 这是高频任务（每30分钟），必须快速完成：\n- 不做技术面分析（那是晨报/收盘的事）\n- 不搜索新闻（浪费时间）\n- 只拉价格+算涨跌+判断是否超阈值\n- 如果 akshare 超时，直接用 price_fetcher 的新浪兜底\n\n通过飞书发送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。",
+        "timeoutSeconds": 180
       },
       "delivery": {
         "mode": "none",
