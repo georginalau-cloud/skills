@@ -104,6 +104,14 @@ SHISHEN_FULL = {
     '才':'偏财','财':'正财','杀':'七杀','官':'正官',
     '枭':'偏印','印':'正印','日主':'日主',
 }
+# 五行对应食物（用于动态食物推荐，与幸运色同逻辑）
+WUXING_FOODS = {
+    '木': {'good': '绿叶蔬菜、菠菜、芹菜、青椒、猕猴桃、绿茶', 'avoid': '酸味过重食物'},
+    '火': {'good': '辣椒、红色食物、烤制食品、羊肉、红枣、枸杞', 'avoid': '冰饮、生冷食物'},
+    '土': {'good': '黄色食物（玉米、南瓜、黄豆）、山药、小米粥、红薯', 'avoid': '过甜食物'},
+    '金': {'good': '白色食物（银耳、百合、梨、莲子、山药）、鸡肉', 'avoid': '辛辣刺激'},
+    '水': {'good': '黑色食物（黑豆、黑芝麻、海带、紫菜）、鱼类、汤品', 'avoid': '过咸食物'},
+}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -435,9 +443,55 @@ def _compute_lucky(day_gan, day_gan_shishen, day_zhi_shishen, day_zhi, day_cangy
     if gan_hint and not note_parts:
         note_parts.append(f'今日天干{day_gan_shishen}当令，{gan_hint}')
 
-    food_hint = SHISHEN_FOOD_HINTS.get(day_gan_shishen, '')
-    if food_hint:
-        foods.append(food_hint)
+    # ── 6.5 食物推荐（与幸运色同逻辑）────────────────────────────────
+    # 基础：用神五行食物
+    base_food = WUXING_FOODS.get(yong_shen, {}).get('good', '')
+    avoid_food = ''
+
+    if is_extreme:
+        # 极端偏枯：用泄气五行的食物
+        xie_wx = SHENG_CHAIN.get(max_wx, '')
+        if max_wx == yong_shen and xie_wx:
+            # 用神太旺，用泄气五行食物平衡
+            base_food = WUXING_FOODS.get(xie_wx, {}).get('good', base_food)
+            foods.append(f'今日{yong_shen}极旺，宜{xie_wx}性食物平衡：{base_food}')
+        elif max_wx in ji_shen:
+            # 忌神极旺，用通关五行食物
+            tong_guan = _get_tongguan_element(max_wx, yong_shen)
+            if tong_guan:
+                tg_food = WUXING_FOODS.get(tong_guan, {}).get('good', '')
+                foods.append(f'忌神{max_wx}极旺，宜{tong_guan}性食物通关：{tg_food}')
+            avoid_food = WUXING_FOODS.get(max_wx, {}).get('good', '')
+            foods.append(f'忌：{avoid_food}（助长忌神{max_wx}）')
+        else:
+            foods.append(f'适宜：{base_food}')
+    elif yong_shen_boosted and day_wuxing_strength.get(yong_shen, 0) >= 4.5:
+        # 用神被强化且已经很旺
+        xie_wx = SHENG_CHAIN.get(yong_shen, '')
+        xie_food = WUXING_FOODS.get(xie_wx, {}).get('good', '') if xie_wx else ''
+        foods.append(f'用神{yong_shen}大旺，适当搭配{xie_wx}性食物：{xie_food}')
+    elif ji_shen_boosted:
+        # 忌神被强化
+        tong_guan = _get_tongguan_element(boosted_element, yong_shen)
+        if tong_guan:
+            tg_food = WUXING_FOODS.get(tong_guan, {}).get('good', '')
+            foods.append(f'宜{tong_guan}性食物：{tg_food}')
+        ji_food = WUXING_FOODS.get(boosted_element, {}).get('good', '')
+        foods.append(f'忌：{ji_food}（助长忌神）')
+    else:
+        # 正常情况：用神食物 + 十神辅助
+        foods.append(f'适宜：{base_food}')
+        food_hint = SHISHEN_FOOD_HINTS.get(day_gan_shishen, '')
+        if food_hint:
+            foods.append(food_hint)
+
+    # 忌食：克用神的五行食物 + 助忌神的五行食物
+    if not avoid_food and yong_shen:
+        ke_yong_wx = KE_WO.get(yong_shen, '')
+        if ke_yong_wx:
+            avoid_food_item = WUXING_FOODS.get(ke_yong_wx, {}).get('good', '')
+            if avoid_food_item and not any('忌' in f for f in foods):
+                foods.append(f'避免：{avoid_food_item}（{ke_yong_wx}克{yong_shen}）')
 
     # ── 7. 综合颜色优先级合并 ────────────────────────────────────────
     final_colors = base_colors.copy()

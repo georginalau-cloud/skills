@@ -52,11 +52,22 @@ except ImportError:
 from bazi_chart import build_bazi_chart
 from bazi_chart_year import (
     build_year_chart,
-    _ten_god, _calc_zhi_interactions, _calc_gan_interactions,
+    _ten_god, _calc_gan_interactions,
     _summarize_interactions,
     GAN_WUXING, ZHI_WUXING, ZHI_CANGYGAN,
 )
 from bazi_chart_month import build_month_chart
+
+# 导入 lib/zhi_relations 作为统一的地支关系分析引擎
+_LIB_DIR = os.path.join(_SKILL_DIR, 'lib')
+sys.path.insert(0, _LIB_DIR)
+try:
+    from zhi_relations import analyze_zhi_relations
+    HAS_ZHI_RELATIONS = True
+except ImportError:
+    HAS_ZHI_RELATIONS = False
+    # 降级：使用 bazi_chart_year 的简化版
+    from bazi_chart_year import _calc_zhi_interactions
 
 DIRECTION_CN = {
     '艮':'东北','震':'正东','巽':'东南','离':'正南',
@@ -169,7 +180,38 @@ def build_day_chart(month_chart: dict, liuri_date: str = None, hour: int = 8) ->
                  | ({liuyue_gan}  if liuyue_gan  else set()))
 
     # ── 3. 计算流日与各层的刑冲合 ─────────────────────────────────
-    zhi_interactions = _calc_zhi_interactions(day_zhi_ri, base_zhis)
+    # 收集所有层级天干（用于透出检查）
+    all_tiangan = list(yuanju_gans)
+    for gz in [dayun_gz, liuyear_gz, liuyue_gz, day_gz]:
+        if gz and len(gz) >= 1:
+            all_tiangan.append(gz[0])
+
+    if HAS_ZHI_RELATIONS:
+        # 使用 lib/zhi_relations.py 统一引擎（与 daily_fortune.py 同源）
+        existing_zhis = frozenset(base_zhis - {day_zhi_ri})
+        full_relations = analyze_zhi_relations(day_zhi_ri, existing_zhis, all_tiangan=all_tiangan)
+        # 转换为 interactions 输出格式
+        zhi_interactions = []
+        for rel in full_relations.get('relations', []):
+            zhi_b = rel.get('partner', '')
+            if not zhi_b and rel.get('members'):
+                # 三会/三合：取非自身的成员
+                members = rel['members']
+                zhi_b = ''.join(m for m in members if m != day_zhi_ri)
+            zhi_interactions.append({
+                'type': rel['type'],
+                'zhi_a': day_zhi_ri,
+                'zhi_b': zhi_b,
+                'desc': rel.get('name', '') or rel.get('desc', ''),
+                'effect': rel.get('desc', ''),
+                'weight': rel.get('weight', 0),
+                'element': rel.get('element', ''),
+                'is_positive': rel.get('is_positive', True),
+            })
+    else:
+        # 降级：使用简化版
+        zhi_interactions = _calc_zhi_interactions(day_zhi_ri, base_zhis)
+
     gan_interactions = _calc_gan_interactions(day_gan_ri, base_gans)
 
     # 标注来源
