@@ -77,6 +77,8 @@ CHONG = {'子':'午','午':'子','丑':'未','未':'丑','寅':'申','申':'寅'
 HE6   = {'子':'丑','丑':'子','寅':'亥','亥':'寅','卯':'戌','戌':'卯','辰':'酉','酉':'辰','巳':'申','申':'巳','午':'未','未':'午'}
 XING  = {'子':'卯','卯':'子','寅':'巳','巳':'申','申':'寅','丑':'戌','戌':'未','未':'丑','辰':'辰','午':'午','酉':'酉','亥':'亥'}
 SANHE = [({'申','子','辰'},'水局'),({'寅','午','戌'},'火局'),({'巳','酉','丑'},'金局'),({'亥','卯','未'},'木局')]
+SANHUI = [({'寅','卯','辰'},'木','东方三会木局'),({'巳','午','未'},'火','南方三会火局'),({'申','酉','戌'},'金','西方三会金局'),({'亥','子','丑'},'水','北方三会水局')]
+HAI = {'子':'未','未':'子','丑':'午','午':'丑','寅':'巳','巳':'寅','卯':'辰','辰':'卯','申':'亥','亥':'申','酉':'戌','戌':'酉'}
 GAN_HE = {'甲':'己','己':'甲','乙':'庚','庚':'乙','丙':'辛','辛':'丙','丁':'壬','壬':'丁','戊':'癸','癸':'戊'}
 GAN_CHONG = {'甲':'庚','庚':'甲','乙':'辛','辛':'乙','丙':'壬','壬':'丙','丁':'癸','癸':'丁'}
 
@@ -120,8 +122,23 @@ def _ganzhi_detail(gz: str, day_gan: str) -> dict:
 
 
 def _calc_zhi_interactions(zhi_new: str, zhi_set: set) -> list:
-    """计算一个新地支与已有地支集合的刑冲合关系。"""
+    """计算一个新地支与已有地支集合的刑冲合关系（含三会局、六害）。"""
     results = []
+    all_zhis = zhi_set | {zhi_new}
+
+    # 三会局（力量最强，优先检测）
+    for members, element, name in SANHUI:
+        if zhi_new in members and members.issubset(all_zhis):
+            # 找出另外两个参与的地支
+            others = [z for z in members if z != zhi_new]
+            for other in others:
+                results.append({'type':'三会','zhi_a':zhi_new,'zhi_b':other,'desc':f'{name}（{zhi_new}+{other}+{[z for z in members if z != zhi_new and z != other][0] if len(others)>1 else ""}）','effect':f'{element}五行力量极强，可改变格局'})
+            # 只输出一条三会记录，不重复
+            results = [r for r in results if r['type'] != '三会']
+            others_str = ''.join(sorted(members))
+            results.append({'type':'三会','zhi_a':zhi_new,'zhi_b':''.join(sorted(members - {zhi_new})),'desc':f'{name}（{"".join(sorted(members))}）','effect':f'{element}五行力量极强，可改变格局','members':list(members)})
+            break  # 一个地支只能参与一个三会
+
     for zhi_b in zhi_set:
         if zhi_b == zhi_new:
             continue
@@ -131,15 +148,17 @@ def _calc_zhi_interactions(zhi_new: str, zhi_set: set) -> list:
             results.append({'type':'合','zhi_a':zhi_new,'zhi_b':zhi_b,'desc':f'{zhi_new}合{zhi_b}','effect':'有助力（合而不化，各自五行属性保留）'})
         if XING.get(zhi_new) == zhi_b and zhi_new != zhi_b:
             results.append({'type':'刑','zhi_a':zhi_new,'zhi_b':zhi_b,'desc':f'{zhi_new}刑{zhi_b}','effect':'摩擦压力，需谨慎'})
+        if HAI.get(zhi_new) == zhi_b:
+            results.append({'type':'害','zhi_a':zhi_new,'zhi_b':zhi_b,'desc':f'{zhi_new}害{zhi_b}','effect':'暗中损耗，需防小人或暗伤'})
     # 自刑
-    if XING.get(zhi_new) == zhi_new:
-        results.append({'type':'自刑','zhi_a':zhi_new,'zhi_b':zhi_new,'desc':f'{zhi_new}自刑','effect':'内耗，需注意自我管理'})
+    if XING.get(zhi_new) == zhi_new and zhi_new in zhi_set:
+        results.append({'type':'自刑','zhi_a':zhi_new,'zhi_b':zhi_new,'desc':f'{zhi_new}{zhi_new}自刑','effect':'内耗，需注意自我管理'})
     # 三合（检查新地支加入后是否凑成三合）
     for members, ju_name in SANHE:
         if zhi_new in members:
             all_present = members.issubset(zhi_set | {zhi_new})  # 三支必须全部存在
             if all_present:
-                results.append({'type':'三合','members':list(members),'ju_name':ju_name,'desc':f'三合{ju_name}','effect':'力量聚合，大有助益'})
+                results.append({'type':'三合','members':list(members),'zhi_a':zhi_new,'zhi_b':''.join(sorted(members - {zhi_new})),'desc':f'三合{ju_name}（{"".join(sorted(members))}）','effect':'力量聚合，大有助益'})
     return results
 
 
