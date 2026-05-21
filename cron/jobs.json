@@ -267,7 +267,7 @@
     {
       "id": "jirou-2100-garmin-token",
       "agentId": "jirou",
-      "name": "肌肉-21:00检查Garmin Token",
+      "name": "肌肉-21:00主动刷新Garmin Token",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -278,7 +278,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "检查 Garmin Token 状态：运行 gccli auth status\n\n判断标准：token 是否能保证到明天(D+1) 07:00 仍有效（即能在明早 06:00 正常抓取今日数据）。\n\n如果 Token 有效期充足：静默退出，不发任何消息。\n如果 Token 已过期或将在明早 07:00 前过期：发送提醒给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n\n「⚠️ Garmin 授权需要更新\n\ngccli 的访问令牌即将过期，明早 06:00 的数据抓取会失败。\n\n请在 MacBook 终端运行：\ngccli auth login georginalau@163.com\n\n完成后回复我「已授权」。」\n\n收到「已授权」后：回复「✅ 已确认，明早将正常抓取 Garmin 数据。」\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。",
+        "message": "主动刷新 Garmin Token（不只是检查，要实际调用 API 续期）。\n\n步骤：\n1. 运行 `gccli health summary $(date +%Y-%m-%d) --json` 尝试获取今日健康摘要\n2. 如果成功（返回 JSON 数据）：说明 token 有效且已续期，静默退出，不发任何消息\n3. 如果失败（401/403/超时）：说明 token 已过期，发送提醒给用户（飞书 open_id: ou_aaf284a8365c85e8b792bb77b9bc8d59，accountId: jirou）：\n\n「⚠️ Garmin 授权已过期\n\n明早 06:00 的数据抓取会失败。请在终端运行：\ngccli auth login georginalau@163.com\n\n完成短信验证后回复我「已授权」。」\n\n收到「已授权」后：再次运行 `gccli health summary $(date +%Y-%m-%d) --json` 验证，成功则回复「✅ 已确认，token 有效。」\n\n⛔ 禁止生成任何\"检查清单状态\"类消息。\n\n💡 原理：OAuth2 token 在有效期内每次 API 调用都会自动续期。只要每天至少成功调用一次，token 就不会过期。本任务的目的是确保每天至少有一次成功调用来保持 token 活跃。",
         "timeoutSeconds": 300
       },
       "delivery": {
