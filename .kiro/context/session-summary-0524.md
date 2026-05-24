@@ -119,17 +119,56 @@ openclaw gateway restart
 
 ## 待解决的问题
 
-### 1. zhi_relations.py 分析顺序调整
-用户要求：先分析原局地支之间的关系（existing_zhis），再分析新加入地支（大运/流年/流月/流日）与原局的关系。当前是反过来的。
+### 1. zhi_relations.py 分层输出重构（最重要）
 
-### 2. GitHub 和本地 test-repo 可能不同步
-用户发现 GitHub 上的内容和桌面 test-repo 不一致。需要重新 clone 确认。
+用户要求：分析结果按层级输出，每层只输出该层新增的关系。
 
-### 3. 代理分流（未解决）
-web_search 需要代理访问 Google，akshare 不能走代理访问国内金融接口。需要在代理工具里配规则分流。
+**设计方案**：
 
-### 4. Brave Search 额度
-5美元免费额度用完了，当前已切换到 Tavily。下个月 Brave 额度重置后可以切回来。
+```python
+def analyze_zhi_relations_layered(
+    yuanju_zhis: list,           # 原局四柱地支 ['巳','丑','酉','未']
+    dayun_zhi: str = None,       # 大运地支
+    liunian_zhi: str = None,     # 流年地支
+    liuyue_zhi: str = None,      # 流月地支
+    liuri_zhi: str = None,       # 流日地支
+    all_tiangan: list = None,    # 所有层级天干
+) -> dict:
+    """
+    返回：
+    {
+        'yuanju': [...],                    # 原局内部关系（精批第一步）
+        'yuanju_dayun': [...],              # +大运后的新增关系
+        'yuanju_dayun_liunian': [...],      # +流年后的新增关系（精批当前运）
+        'yuanju_dayun_liunian_liuyue': [...], # +流月（月运分析）
+        'yuanju_dayun_liunian_liuyue_liuri': [...], # +流日（日运推送）
+        'all_relations': [...],             # 所有层级合并（完整视图）
+    }
+    """
+```
+
+**适用场景**：
+- 八字精批第一步：只看 `yuanju`（原局四柱地支之间的关系）
+- 八字精批当前运：`yuanju` + `yuanju_dayun` + `yuanju_dayun_liunian`
+- 月运分析：上面 + `yuanju_dayun_liunian_liuyue`
+- 日运推送：上面 + `yuanju_dayun_liunian_liuyue_liuri`
+
+**实现要点**：
+- 每层只输出**新增**的关系（不重复上一层已有的）
+- 原有的 `analyze_zhi_relations` 函数保留（向后兼容），新增 `analyze_zhi_relations_layered`
+- 所有调用处（09-bazi_chart_day.py、22-daily_fortune.py）改为调用新函数
+
+### 2. GitHub 和本地 test-repo 同步
+用户需要重新 clone 确认一致性：
+```bash
+cd ~/Desktop && rm -rf test-repo && git clone git@github.com:georginalau-cloud/skills.git test-repo
+```
+
+### 3. Brave Search 额度
+当前用 Tavily。下月 Brave 重置后改回 `"provider": "brave"`。OpenClaw 不支持 fallback 机制。
+
+### 4. 代理分流（未解决）
+web_search 需要代理，akshare 不能走代理。需要在代理工具里配规则。
 
 ---
 
