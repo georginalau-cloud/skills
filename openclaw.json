@@ -96,7 +96,7 @@
             "end": "23:00",
             "timezone": "Asia/Shanghai"
           },
-          "prompt": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
+          "prompt": "First read AGENTS.md in your workspace to load startup context (SOUL.md, USER.md, MEMORY.md in order). Then read HEARTBEAT.md if it exists. Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
         },
         "groupChat": {
           "mentionPatterns": [
@@ -151,7 +151,7 @@
             "end": "17:00",
             "timezone": "Asia/Shanghai"
           },
-          "prompt": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
+          "prompt": "First read AGENTS.md in your workspace to load startup context (SOUL.md, USER.md, MEMORY.md in order). Then read HEARTBEAT.md if it exists. Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
         },
         "groupChat": {
           "mentionPatterns": [
