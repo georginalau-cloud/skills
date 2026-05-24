@@ -112,9 +112,7 @@
         "workspace": "/Users/georginalau/.openclaw/workspace-jirou",
         "agentDir": "/Users/georginalau/.openclaw/agents/jirou/agent",
         "tools": {},
-        "heartbeat": {
-          "enabled": false
-        },
+        "heartbeat": {},
         "groupChat": {
           "mentionPatterns": [
             "@肌肉",
@@ -169,11 +167,7 @@
     "web": {
       "search": {
         "enabled": true,
-        "provider": "brave",
-        "fallback": "tavily",
-        "tavily": {
-          "apiKey": "${TAVILY_API_KEY}"
-        }
+        "provider": "tavily"
       }
     },
     "exec": {
