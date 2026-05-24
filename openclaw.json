@@ -335,6 +335,14 @@
         },
         "enabled": true
       },
+      "tavily": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "apiKey": "${TAVILY_API_KEY}"
+          }
+        }
+      },
       "microsoft": {
         "enabled": true
       }
