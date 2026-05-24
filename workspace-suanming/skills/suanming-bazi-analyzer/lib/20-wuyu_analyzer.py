@@ -136,8 +136,8 @@ SCENE_WEIGHTS = {
         "原局": 1.5, "大运": 1.5, "流年": 2.5, "流月": 3.0, "流日": 0.3,
     },
     "daily": {
-        # 日运分析：流日为当日焦点，流月为近期应期，流年为太岁
-        "原局": 1.0, "大运": 1.0, "流年": 2.0, "流月": 2.0, "流日": 3.0,
+        # 日运分析：太岁（流年）为尊，流月为应期，流日为触发引动
+        "原局": 1.0, "大运": 1.5, "流年": 2.5, "流月": 2.0, "流日": 2.0,
     },
 }
 
@@ -150,6 +150,17 @@ def _gz_split(gz):
     if gz and len(gz) >= 2:
         return gz[0], gz[1]
     return None, None
+
+
+# 十神全称→简称映射
+_SHISHEN_FULL_TO_SHORT = {v: k for k, v in SHISHEN_FULL.items()}
+# 补充：如果传入的已经是简称，直接返回
+_SHISHEN_FULL_TO_SHORT.update({k: k for k in SHISHEN_FULL.keys()})
+
+
+def _full_to_short(shishen: str) -> str:
+    """将十神全称转为简称：'正官'→'官'，'七杀'→'杀'，已是简称则不变"""
+    return _SHISHEN_FULL_TO_SHORT.get(shishen, shishen)
 
 
 def _get_interactions(zhi_a, zhi_set):
@@ -211,10 +222,21 @@ def _analyze_one_layer(gz, day_gan, gender, layer_name, yuanju_zhis):
         return {}
 
     from .ten_gods_analyzer import get_ten_god
-    shishen_gan  = get_ten_god(day_gan, gan)
+    shishen_gan_full = get_ten_god(day_gan, gan)
     cangygan     = ZHI_CANGYGAN.get(zhi, [])
-    shishen_zhi  = get_ten_god(day_gan, cangygan[0]) if cangygan else ""
-    interactions = _get_interactions(zhi, yuanju_zhis)
+    shishen_zhi_full = get_ten_god(day_gan, cangygan[0]) if cangygan else ""
+
+    # 全称→简称映射（get_ten_god返回'正官'，但评分系统用'官'）
+    shishen_gan = _full_to_short(shishen_gan_full)
+    shishen_zhi = _full_to_short(shishen_zhi_full)
+
+    # 获取完整的地支关系（带结构化数据）
+    from .zhi_relations import analyze_zhi_relations
+    rel_result = analyze_zhi_relations(zhi, frozenset(yuanju_zhis) - {zhi})
+    relations = rel_result.get('relations', [])
+
+    # 旧接口兼容（纯文字描述列表）
+    interactions = [r['desc'] for r in relations]
 
     wuyu = {}
     for dim in WUYU_DIMS:
@@ -228,28 +250,89 @@ def _analyze_one_layer(gz, day_gan, gender, layer_name, yuanju_zhis):
 
         if shishen_gan in relevant:
             notes.append(f"天干{gan}（{full_gan}）为{dim_n}星，{layer_name}有力")
+        elif _score_shishen(shishen_gan, dim, gender) < 0:
+            notes.append(f"天干{gan}（{full_gan}）克制{dim_n}星，{dim_n}受压")
         if shishen_zhi in relevant:
             notes.append(f"地支{zhi}藏{cangygan[0] if cangygan else ''}（{full_zhi}）为{dim_n}星，有根")
+        elif _score_shishen(shishen_zhi, dim, gender) < 0:
+            notes.append(f"地支{zhi}藏{cangygan[0] if cangygan else ''}（{full_zhi}）克制{dim_n}星")
 
-        for inter in interactions:
-            if "冲" in inter:
-                notes.append(f"{inter}，{dim_n}宫受冲，需防波动")
-            elif "三会" in inter:
-                notes.append(f"{inter}，{dim_n}宫五行大旺，影响显著")
-            elif "三合" in inter:
-                notes.append(f"{inter}，{dim_n}宫五行聚合，有助力")
-            elif "六合" in inter:
-                notes.append(f"{inter}，{dim_n}宫得合（合而不化），有稳定助力")
-            elif "半合" in inter:
-                notes.append(f"{inter}，{dim_n}宫小有聚合之力")
-            elif "合" in inter:
-                notes.append(f"{inter}，{dim_n}宫得合，有助力")
-            elif "刑" in inter:
-                notes.append(f"{inter}，{dim_n}宫受刑，需防摩擦")
-            elif "害" in inter:
-                notes.append(f"{inter}，{dim_n}宫受害，需防暗耗")
-            elif "破" in inter:
-                notes.append(f"{inter}，{dim_n}宫受破，轻微影响")
+        # ── 关键改动：只选取与该维度相关的地支关系 ──────────────
+        # 每个维度关注的五行/宫位不同：
+        #   夫/妻宫 = 日支的关系（日支代表配偶宫）
+        #   财宫 = 财星五行相关的关系
+        #   子宫 = 食伤五行相关的关系
+        #   禄宫 = 官杀五行相关的关系
+        #   寿宫 = 印比五行相关的关系
+        dim_relations = _filter_relations_for_dim(
+            dim, relations, day_gan, gender, yuanju_zhis
+        )
+
+        # ── 地支关系对分数的贡献 ──────────────────────────────────
+        # 三会/三合/六合等正面关系：如果五行与维度相关 → 加分
+        # 六冲/三刑/六害等负面关系：如果五行与维度相关 → 减分
+        # 间接影响（泄/克/生）也计入，但力度减半
+        for rel in dim_relations:
+            rweight = rel.get('weight', 0)
+            indirect = rel.get('_indirect', '')
+
+            if indirect:
+                # 间接影响：力度打折
+                if indirect == 'benefit':
+                    score += 0.5  # 间接得益
+                elif indirect == 'drain':
+                    score -= 0.5  # 被泄
+                elif indirect == 'harm':
+                    score -= 0.8  # 被克
+            else:
+                # 直接影响：根据关系权重换算
+                # 正面关系（三会4.0, 三合3.0, 六合2.0, 半合1.5）→ 加分
+                # 负面关系（六冲-2.5, 三刑-1.5, 六害-1.0）→ 减分
+                if rweight > 0:
+                    score += min(2, rweight * 0.5)  # 正面关系加分，上限+2
+                elif rweight < 0:
+                    score += max(-2, rweight * 0.4)  # 负面关系减分，下限-2
+
+        for rel in dim_relations:
+            rtype = rel['type']
+            rname = rel.get('name', '')
+            element = rel.get('element', '')
+            is_positive = rel.get('is_positive', True)
+            indirect = rel.get('_indirect', '')
+            indirect_note = rel.get('_indirect_note', '')
+
+            # 间接影响的描述需要特殊处理
+            if indirect:
+                if indirect == 'benefit':
+                    notes.append(f"{rname}（{indirect_note}），{dim_n}星间接得益")
+                elif indirect == 'drain':
+                    notes.append(f"{rname}（{indirect_note}），{dim_n}星被泄耗")
+                elif indirect == 'harm':
+                    notes.append(f"{rname}（{indirect_note}），{dim_n}星受克损")
+            elif is_positive:
+                if '三会' in rtype:
+                    notes.append(f"{rname}，{dim_n}星五行大旺")
+                elif '三合' in rtype:
+                    notes.append(f"{rname}，{dim_n}星五行聚合，有助力")
+                elif '六合' in rtype and '被冲' not in rtype:
+                    notes.append(f"{rname}，{dim_n}宫得合，有稳定助力")
+                elif '半' in rtype:
+                    notes.append(f"{rname}，{dim_n}宫有聚合之力")
+                else:
+                    notes.append(f"{rname}，对{dim_n}有利")
+            else:
+                if '冲' in rtype:
+                    notes.append(f"{rname}，{dim_n}宫受冲，需防波动")
+                elif '刑' in rtype:
+                    notes.append(f"{rname}，易生是非口舌或健康问题")
+                elif '害' in rtype:
+                    notes.append(f"{rname}，{dim_n}宫暗损，需防小人")
+                elif '破' in rtype:
+                    notes.append(f"{rname}，{dim_n}宫小有损耗")
+                elif '被冲破' in rname:
+                    notes.append(f"{rname}，{dim_n}宫合力消散")
+                else:
+                    notes.append(f"{rname}，对{dim_n}不利")
 
         wuyu[dim] = {
             "score":       max(-3, min(3, score)),
@@ -268,6 +351,120 @@ def _analyze_one_layer(gz, day_gan, gender, layer_name, yuanju_zhis):
         "interactions": interactions,
         "wuyu":         wuyu,
     }
+
+
+def _filter_relations_for_dim(dim: str, relations: list, day_gan: str,
+                              gender: str, yuanju_zhis: set) -> list:
+    """
+    根据维度筛选相关的地支关系。
+
+    原则：
+    - 夫/妻宫（qi）：关注日支（配偶宫）相关的关系
+    - 财宫（cai）：关注财星五行相关的关系
+    - 子宫（zi）：关注食伤五行相关的关系
+    - 禄宫（lu）：关注官杀五行相关的关系
+    - 寿宫（shou）：关注印比五行相关的关系
+
+    如果某个关系涉及的五行与该维度的代表五行一致，或者涉及的地支是该维度的宫位，
+    则该关系与此维度相关。
+
+    对于三会/三合等大格局关系，如果其五行恰好是该维度的代表五行，影响更大。
+    """
+    from .ten_gods_analyzer import get_ten_god
+
+    # 确定该维度关注的五行
+    # 日主五行
+    day_element = GAN_WUXING.get(day_gan, '')
+
+    # 五行生克关系映射（基于日主）
+    # 相生：木→火→土→金→水→木
+    # 相克：木→土→水→火→金→木
+    SHENG_WO = {'木': '水', '火': '木', '土': '火', '金': '土', '水': '金'}  # 生我者（印）
+    WO_SHENG = {'木': '火', '火': '土', '土': '金', '金': '水', '水': '木'}  # 我生者（食伤）
+    KE_WO = {'木': '金', '火': '水', '土': '木', '金': '火', '水': '土'}     # 克我者（官杀）
+    WO_KE = {'木': '土', '火': '金', '土': '水', '金': '木', '水': '火'}     # 我克者（财）
+
+    if not day_element:
+        return relations[:2]
+
+    yin_element = SHENG_WO.get(day_element, '')    # 印星五行
+    shi_element = WO_SHENG.get(day_element, '')    # 食伤五行
+    guan_element = KE_WO.get(day_element, '')      # 官杀五行
+    cai_element = WO_KE.get(day_element, '')       # 财星五行
+    bi_element = day_element                       # 比劫五行
+
+    # 维度 → 关注的五行
+    dim_elements = {
+        'qi':   [cai_element] if gender == 'male' else [guan_element],  # 男财女官
+        'cai':  [cai_element, shi_element],  # 财星 + 食伤生财
+        'zi':   [shi_element],               # 食伤
+        'lu':   [guan_element],              # 官杀
+        'shou': [yin_element, bi_element],   # 印星 + 比劫
+    }
+
+    target_elements = dim_elements.get(dim, [])
+
+    # 筛选：关系涉及的五行与维度相关，或者是大格局（三会/三合/六冲）
+    filtered = []
+    for rel in relations:
+        rel_element = rel.get('element', '')
+        rtype = rel.get('type', '')
+        weight = abs(rel.get('weight', 0))
+
+        # 条件1：关系涉及的五行与该维度相关
+        if rel_element and rel_element in target_elements:
+            filtered.append(rel)
+            continue
+
+        # 条件2：大格局关系（三会/三合）且力量很强
+        # 检查该五行是否与维度关注的五行有生克关系
+        if weight >= 3.0 and rtype in ('三会', '三合') and rel_element:
+            if rel_element in target_elements:
+                # 已在条件1处理，不重复
+                pass
+            else:
+                # 间接影响判断：
+                # - 维度五行生了大格局五行 → 被泄（木生火→火旺泄木）
+                # - 大格局五行克维度五行 → 被克（火克金→金受损）
+                # - 大格局五行生维度五行 → 被生（火生土→土得益）
+                WO_SHENG_MAP = {'木': '火', '火': '土', '土': '金', '金': '水', '水': '木'}
+                WO_KE_MAP = {'木': '土', '火': '金', '土': '水', '金': '木', '水': '火'}
+
+                for te in target_elements:
+                    if not te:
+                        continue
+                    # 维度五行生大格局五行？（被泄）
+                    if WO_SHENG_MAP.get(te) == rel_element:
+                        tagged = dict(rel)
+                        tagged['_indirect'] = 'drain'  # 被泄
+                        tagged['_indirect_note'] = f'{te}生{rel_element}，{te}被泄耗'
+                        filtered.append(tagged)
+                        break
+                    # 大格局五行克维度五行？（被克）
+                    if WO_KE_MAP.get(rel_element) == te:
+                        tagged = dict(rel)
+                        tagged['_indirect'] = 'harm'  # 被克
+                        tagged['_indirect_note'] = f'{rel_element}克{te}，{te}受损'
+                        filtered.append(tagged)
+                        break
+                    # 大格局五行生维度五行？（得益）
+                    if WO_SHENG_MAP.get(rel_element) == te:
+                        tagged = dict(rel)
+                        tagged['_indirect'] = 'benefit'  # 得益
+                        tagged['_indirect_note'] = f'{rel_element}生{te}，{te}得益'
+                        filtered.append(tagged)
+                        break
+            continue
+
+        # 条件3：夫/妻宫特殊 — 日支（配偶宫）被冲/合/刑直接影响感情
+        # 日支在 yuanju_zhis 中，如果关系的 partner 是日支所在位置
+        # （这里简化处理：如果关系涉及"酉"且dim是qi，因为日支=酉=配偶宫）
+        # 注意：这需要知道日支是什么，从 yuanju_zhis 无法直接得知哪个是日支
+        # 暂时跳过这个优化，后续可以传入日支参数
+
+    # 如果筛选后为空，不强制填充（该维度确实没有相关的地支关系）
+    # 限制数量，避免信息过载
+    return filtered[:3]
 
 
 # ─────────────────────────────────────────────────────────────────

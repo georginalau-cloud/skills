@@ -25,6 +25,21 @@ from .ganzhi_calculator import (
     BRANCH_ELEMENTS,
 )
 
+# ── 三刑完整组定义 ──────────────────────────────────────────────
+# 三刑必须三支到齐才算完整三刑，两支只算"半刑"（力量大幅削减）
+# 无恩之刑：寅巳申（三支循环互刑）
+# 持势之刑：丑未戌（三支循环互刑）
+# 无礼之刑：子卯（两支即成立，不需要第三支）
+# 自刑：辰辰、午午、酉酉、亥亥（需要同支出现2次）
+ZHI_SANXING_GROUPS = [
+    (frozenset({'寅', '巳', '申'}), '无恩之刑（寅巳申）'),
+    (frozenset({'丑', '未', '戌'}), '持势之刑（丑未戌）'),
+]
+# 无礼之刑只需两支
+ZHI_WULI_XING = frozenset({'子', '卯'})
+# 自刑支
+ZHI_ZIXING = {'辰', '午', '酉', '亥'}
+
 
 def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset, all_tiangan: list = None) -> dict:
     """
@@ -288,29 +303,67 @@ def analyze_zhi_relations(new_zhi: str, existing_zhis: frozenset, all_tiangan: l
             })
 
     # ── 6. 三刑（摩擦压力）──────────────────────────────────────
-    xing_partners = ZHI_XING.get(new_zhi, [])
-    for xing_p in xing_partners:
-        if xing_p in existing_zhis and xing_p != new_zhi:
+    # 规则：
+    #   - 无恩之刑（寅巳申）/ 持势之刑（丑未戌）：三支到齐=完整三刑，两支=半刑（力量打3折）
+    #   - 无礼之刑（子卯）：两支即成立
+    #   - 自刑（辰辰/午午/酉酉/亥亥）：需要同支出现2次
+
+    # 检查完整三刑组
+    for group_members, group_name in ZHI_SANXING_GROUPS:
+        if new_zhi in group_members:
+            # 该组中除 new_zhi 外的其他成员
+            others_in_group = group_members - {new_zhi}
+            others_present = others_in_group & existing_zhis
+            if len(others_present) == 2:
+                # 三支到齐 → 完整三刑
+                relations.append({
+                    'type':        '三刑',
+                    'name':        group_name,
+                    'element':     BRANCH_ELEMENTS.get(new_zhi, ''),
+                    'weight':      ZHI_RELATION_WEIGHTS['三刑'],
+                    'desc':        f'{group_name}：三支到齐，刑力极强，易生是非或健康问题',
+                    'is_positive': False,
+                    'members':     list(group_members),
+                })
+            elif len(others_present) == 1:
+                # 只有两支 → 半刑（力量打3折）
+                partner = list(others_present)[0]
+                half_weight = ZHI_RELATION_WEIGHTS['三刑'] * 0.3
+                relations.append({
+                    'type':        '半刑',
+                    'name':        f'{new_zhi}与{partner}半刑（缺第三支）',
+                    'element':     BRANCH_ELEMENTS.get(new_zhi, ''),
+                    'weight':      half_weight,
+                    'desc':        f'{new_zhi}与{partner}有刑的趋势，但第三支未到，力量很弱',
+                    'is_positive': False,
+                    'partner':     partner,
+                })
+
+    # 无礼之刑（子卯）：两支即成立
+    if new_zhi in ZHI_WULI_XING:
+        wuli_partner = '卯' if new_zhi == '子' else '子'
+        if wuli_partner in existing_zhis:
             relations.append({
                 'type':        '三刑',
-                'name':        f'{new_zhi}刑{xing_p}',
-                'element':     BRANCH_ELEMENTS.get(xing_p, ''),
+                'name':        f'无礼之刑（{new_zhi}{wuli_partner}）',
+                'element':     BRANCH_ELEMENTS.get(wuli_partner, ''),
                 'weight':      ZHI_RELATION_WEIGHTS['三刑'],
-                'desc':        f'{new_zhi}刑{xing_p}，摩擦压力，易生是非口舌或健康问题',
+                'desc':        f'{new_zhi}与{wuli_partner}无礼之刑，两支即成立，主口舌是非',
                 'is_positive': False,
-                'partner':     xing_p,
+                'partner':     wuli_partner,
             })
-        elif xing_p == new_zhi and new_zhi in existing_zhis:
-            # 自刑
-            relations.append({
-                'type':        '自刑',
-                'name':        f'{new_zhi}自刑',
-                'element':     BRANCH_ELEMENTS.get(new_zhi, ''),
-                'weight':      ZHI_RELATION_WEIGHTS['三刑'] * 0.7,
-                'desc':        f'{new_zhi}自刑，内耗较重，易有自我矛盾或反复',
-                'is_positive': False,
-                'partner':     new_zhi,
-            })
+
+    # 自刑：需要同支出现2次（existing_zhis 中已有该支）
+    if new_zhi in ZHI_ZIXING and new_zhi in existing_zhis:
+        relations.append({
+            'type':        '自刑',
+            'name':        f'{new_zhi}自刑',
+            'element':     BRANCH_ELEMENTS.get(new_zhi, ''),
+            'weight':      ZHI_RELATION_WEIGHTS['三刑'] * 0.7,
+            'desc':        f'{new_zhi}自刑（同支重现），内耗较重，易有自我矛盾或反复',
+            'is_positive': False,
+            'partner':     new_zhi,
+        })
 
     # ── 7. 六害（力量较弱）──────────────────────────────────────
     hai_partner = ZHI_HAI.get(new_zhi)
@@ -431,22 +484,53 @@ def analyze_all_zhi_relations(pillars_zhis: list) -> list:
                 'is_positive': False,
             })
 
-    # 检测三刑
-    checked_xing = set()
-    for zhi in pillars_zhis:
-        for xing_p in ZHI_XING.get(zhi, []):
-            if xing_p in zhi_set and (zhi, xing_p) not in checked_xing:
-                checked_xing.add((zhi, xing_p))
-                if xing_p != zhi:
-                    checked_xing.add((xing_p, zhi))
-                results.append({
-                    'type': '三刑' if xing_p != zhi else '自刑',
-                    'name': f'{zhi}刑{xing_p}',
-                    'element': BRANCH_ELEMENTS.get(xing_p, ''),
-                    'weight': ZHI_RELATION_WEIGHTS['三刑'],
-                    'desc': f'命局{zhi}刑{xing_p}，摩擦压力',
-                    'is_positive': False,
-                })
+    # 检测三刑（完整三刑组）
+    for group_members, group_name in ZHI_SANXING_GROUPS:
+        present = group_members & zhi_set
+        if len(present) == 3:
+            # 三支到齐 → 完整三刑
+            results.append({
+                'type': '三刑', 'name': group_name,
+                'element': '',
+                'weight': ZHI_RELATION_WEIGHTS['三刑'],
+                'desc': f'命局{group_name}，三支到齐，刑力极强',
+                'is_positive': False,
+                'members': list(group_members),
+            })
+        elif len(present) == 2:
+            # 两支 → 半刑
+            pair = list(present)
+            half_weight = ZHI_RELATION_WEIGHTS['三刑'] * 0.3
+            results.append({
+                'type': '半刑', 'name': f'{pair[0]}与{pair[1]}半刑（缺第三支）',
+                'element': '',
+                'weight': half_weight,
+                'desc': f'命局{pair[0]}与{pair[1]}有刑的趋势，但第三支未到，力量很弱',
+                'is_positive': False,
+            })
+
+    # 无礼之刑（子卯）
+    if '子' in zhi_set and '卯' in zhi_set:
+        results.append({
+            'type': '三刑', 'name': '无礼之刑（子卯）',
+            'element': BRANCH_ELEMENTS.get('卯', ''),
+            'weight': ZHI_RELATION_WEIGHTS['三刑'],
+            'desc': '命局子与卯无礼之刑，主口舌是非',
+            'is_positive': False,
+        })
+
+    # 自刑（需要同支出现2次）
+    from collections import Counter
+    zhi_counts = Counter(pillars_zhis)
+    for zhi, count in zhi_counts.items():
+        if zhi in ZHI_ZIXING and count >= 2:
+            results.append({
+                'type': '自刑', 'name': f'{zhi}自刑',
+                'element': BRANCH_ELEMENTS.get(zhi, ''),
+                'weight': ZHI_RELATION_WEIGHTS['三刑'] * 0.7,
+                'desc': f'命局{zhi}自刑（同支出现{count}次），内耗较重',
+                'is_positive': False,
+            })
 
     # 检测六害
     checked_hai = set()
@@ -493,6 +577,185 @@ def _build_summary(new_zhi: str, relations: list, net_score: float) -> str:
     else:
         other_names = '、'.join(r['name'] for r in relations[1:3])
         return f'{new_zhi}与命局：主要为{rel_name}，另有{other_names}，综合{tone}'
+
+
+def analyze_zhi_relations_layered(
+    yuanju_zhis: list,
+    dayun_zhi: str = None,
+    liunian_zhi: str = None,
+    liuyue_zhi: str = None,
+    liuri_zhi: str = None,
+    all_tiangan: list = None,
+) -> dict:
+    """
+    分层分析地支关系：每层只输出该层新增的关系。
+
+    参数：
+        yuanju_zhis:  原局四柱地支列表，如 ['巳','丑','酉','未']
+        dayun_zhi:    大运地支（可选）
+        liunian_zhi:  流年地支（可选）
+        liuyue_zhi:   流月地支（可选）
+        liuri_zhi:    流日地支（可选）
+        all_tiangan:  所有层级天干列表（用于透出检查）
+
+    返回：
+        {
+            'yuanju': [...],                              # 原局内部关系
+            'yuanju_dayun': [...],                        # +大运后的新增关系
+            'yuanju_dayun_liunian': [...],                # +流年后的新增关系
+            'yuanju_dayun_liunian_liuyue': [...],         # +流月后的新增关系
+            'yuanju_dayun_liunian_liuyue_liuri': [...],   # +流日后的新增关系
+            'all_relations': [...],                       # 所有层级合并
+            'layer_summaries': {                          # 每层一句话总结
+                'yuanju': '...',
+                'yuanju_dayun': '...',
+                ...
+            },
+            'net_scores': {                              # 每层净分
+                'yuanju': 0.0,
+                'yuanju_dayun': 1.5,
+                ...
+            },
+        }
+
+    适用场景：
+        - 八字精批第一步：只看 yuanju
+        - 八字精批当前运：yuanju + yuanju_dayun + yuanju_dayun_liunian
+        - 月运分析：上面 + yuanju_dayun_liunian_liuyue
+        - 日运推送：上面 + yuanju_dayun_liunian_liuyue_liuri
+    """
+    result = {
+        'yuanju': [],
+        'yuanju_dayun': [],
+        'yuanju_dayun_liunian': [],
+        'yuanju_dayun_liunian_liuyue': [],
+        'yuanju_dayun_liunian_liuyue_liuri': [],
+        'all_relations': [],
+        'layer_summaries': {},
+        'net_scores': {},
+    }
+
+    # ── 第1层：原局内部关系 ──────────────────────────────────────
+    yuanju_relations = analyze_all_zhi_relations(yuanju_zhis)
+    result['yuanju'] = yuanju_relations
+    result['net_scores']['yuanju'] = round(
+        sum(r['weight'] for r in yuanju_relations), 2
+    )
+    result['layer_summaries']['yuanju'] = _build_layer_summary('原局', yuanju_relations)
+
+    # 用于追踪已发现的关系（去重用）
+    seen_relation_keys = set()
+    for r in yuanju_relations:
+        seen_relation_keys.add(_relation_key(r))
+
+    # 当前累积的地支集合
+    current_zhis = set(yuanju_zhis)
+
+    # ── 逐层叠加 ────────────────────────────────────────────────
+    layers = [
+        ('yuanju_dayun',                        dayun_zhi,   '大运'),
+        ('yuanju_dayun_liunian',                liunian_zhi, '流年'),
+        ('yuanju_dayun_liunian_liuyue',         liuyue_zhi,  '流月'),
+        ('yuanju_dayun_liunian_liuyue_liuri',   liuri_zhi,   '流日'),
+    ]
+
+    for layer_key, new_zhi, layer_name in layers:
+        if not new_zhi:
+            # 该层无地支，跳过但保留空列表
+            result['net_scores'][layer_key] = 0.0
+            result['layer_summaries'][layer_key] = f'{layer_name}：无'
+            continue
+
+        # 用现有的 analyze_zhi_relations 分析新地支与已有集合的关系
+        existing_frozenset = frozenset(current_zhis)
+        layer_result = analyze_zhi_relations(
+            new_zhi, existing_frozenset, all_tiangan=all_tiangan
+        )
+
+        # 过滤出本层新增的关系（排除已在上层出现的）
+        new_relations = []
+        for r in layer_result.get('relations', []):
+            rkey = _relation_key(r)
+            if rkey not in seen_relation_keys:
+                # 标注来源层
+                r['source_layer'] = layer_name
+                new_relations.append(r)
+                seen_relation_keys.add(rkey)
+
+        # 同时检查：新地支加入后，是否让已有地支之间形成了新的三方关系
+        # （例如：原局有巳、丑，大运来酉 → 巳酉丑三合金局）
+        # 这在 analyze_zhi_relations 中已经处理了（它检查 all_zhis = existing | {new_zhi}）
+        # 但还需要检查新地支是否让已有的两个地支形成了新的三会/三合
+        # → analyze_zhi_relations 的逻辑已覆盖：它检查 new_zhi in members and members.issubset(all_zhis)
+
+        result[layer_key] = new_relations
+        result['net_scores'][layer_key] = round(
+            sum(r['weight'] for r in new_relations), 2
+        )
+        result['layer_summaries'][layer_key] = _build_layer_summary(
+            f'{layer_name}({new_zhi})', new_relations
+        )
+
+        # 将新地支加入累积集合
+        current_zhis.add(new_zhi)
+
+    # ── 合并所有层级关系 ─────────────────────────────────────────
+    all_rels = list(result['yuanju'])
+    for layer_key, _, _ in layers:
+        all_rels.extend(result[layer_key])
+    all_rels.sort(key=lambda r: abs(r['weight']), reverse=True)
+    result['all_relations'] = all_rels
+
+    return result
+
+
+def _relation_key(r: dict) -> str:
+    """
+    生成关系的唯一标识 key，用于跨层去重。
+    基于关系类型 + 涉及的地支（排序后）来去重。
+    """
+    rtype = r.get('type', '')
+    # 获取涉及的所有地支
+    members = r.get('members', [])
+    partner = r.get('partner', '')
+    if members:
+        zhis = tuple(sorted(members))
+    elif partner:
+        # 对于六合/六冲等双支关系，需要从 name 中提取或用 partner
+        # name 格式如 "巳丑六合" 或 "巳冲亥"
+        zhis = tuple(sorted([partner, r.get('name', '')[0] if r.get('name') else '']))
+    else:
+        zhis = (r.get('name', ''),)
+    return f"{rtype}|{''.join(zhis)}"
+
+
+def _build_layer_summary(layer_name: str, relations: list) -> str:
+    """生成某一层的关系总结"""
+    if not relations:
+        return f'{layer_name}：无新增刑冲合关系'
+
+    positive = [r for r in relations if r.get('is_positive')]
+    negative = [r for r in relations if not r.get('is_positive')]
+
+    parts = []
+    if positive:
+        names = '、'.join(r['name'] for r in positive[:3])
+        parts.append(f'合会：{names}')
+    if negative:
+        names = '、'.join(r['name'] for r in negative[:3])
+        parts.append(f'冲刑：{names}')
+
+    net = sum(r['weight'] for r in relations)
+    if net >= 2:
+        tone = '整体有利'
+    elif net >= 0:
+        tone = '吉凶参半'
+    elif net >= -2:
+        tone = '略有不利'
+    else:
+        tone = '冲击较大'
+
+    return f'{layer_name}：{"；".join(parts)}（{tone}）'
 
 
 def score_relation_for_element(relations: list, target_element: str) -> float:
