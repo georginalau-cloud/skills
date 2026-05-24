@@ -169,7 +169,11 @@
     "web": {
       "search": {
         "enabled": true,
-        "provider": "brave"
+        "provider": "brave",
+        "fallback": "tavily",
+        "tavily": {
+          "apiKey": "${TAVILY_API_KEY}"
+        }
       }
     },
     "exec": {
