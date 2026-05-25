@@ -24,7 +24,8 @@ def _load_fund_list():
     if _HOLDINGS_PATH.exists():
         with open(_HOLDINGS_PATH, encoding='utf-8') as f:
             data = json.load(f)
-        return {code: info["name"] for code, info in data.get("funds", {}).items()}
+        return {code: info["name"] for code, info in data.get("funds", {}).items()
+                if not code.startswith("_") and isinstance(info, dict) and "name" in info}
     # 兜底：如果 holdings.json 不存在，用硬编码
     return {
         "163402": "兴全趋势投资",

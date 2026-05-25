@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 close_analysis.py
-收盘分析：持仓个股 + 基金穿透，两部分合一
-每天14:50自动运行，推送飞书
+收盘后持仓分析：个股盈亏 + 基金穿透盈亏，两部分合一
+每天15:30收盘后运行，推送飞书
+
+注意：本脚本在收盘后运行（15:30），使用收盘价计算当日盈亏。
+      不要在盘中调用（盘中穿透估值用 fund_penetration_pnl.py）。
 """
 import requests, re, time, json
 
@@ -20,7 +23,8 @@ _H = _load_holdings()
 MY_STOCKS = {code: {"name": info["name"], "shares": info["shares"], "cost": info["cost"]}
              for code, info in _H.get("stocks", {}).items()}
 MY_FUNDS = {code: {"name": info["name"], "shares": info["shares"]}
-            for code, info in _H.get("funds", {}).items()}
+            for code, info in _H.get("funds", {}).items()
+            if not code.startswith("_") and isinstance(info, dict) and "shares" in info}
 
 FUND_HOLDINGS_PATH = __import__('pathlib').Path(__file__).parent.parent.parent / "market-alert" / "references" / "fund_holdings.json"
 

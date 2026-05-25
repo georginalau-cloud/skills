@@ -28,7 +28,8 @@ def _load_holdings():
 
 _H = _load_holdings()
 MY_FUND_HOLDINGS = {code: {"name": info["name"], "shares": info["shares"]}
-                    for code, info in _H.get("funds", {}).items()}
+                    for code, info in _H.get("funds", {}).items()
+                    if not code.startswith("_") and isinstance(info, dict) and "shares" in info}
 
 FUND_HOLDINGS_PATH = Path(__file__).parent.parent.parent / "market-alert" / "references" / "fund_holdings.json"
 
