@@ -39,7 +39,7 @@ def get_sina_prices(codes):
         v = line.split('"')[1].split(',')
         if len(v) < 6: continue
         try:
-            cur = float(v[1]); prev = float(v[2])
+            cur = float(v[3]); prev = float(v[2])
             result[k] = (cur, prev, (cur-prev)/prev*100)
         except: pass
     return result

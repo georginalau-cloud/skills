@@ -15,23 +15,35 @@ import time
 import argparse
 from pathlib import Path
 
-# ── 用户持仓基金（从 MEMORY.md 录入）───────────────────────
-MY_FUNDS = {
-    "163402": "兴全趋势投资",
-    "006113": "汇添富创新医药A",
-    "519069": "汇添富价值精选A",
-    "166002": "中欧新蓝筹A",
-    "000979": "景顺长城沪港深精选A",
-    "006751": "富国互联科技A",
-    "004477": "嘉实沪港深回报",
-    "001371": "富国沪港深价值精选A",
-    "166005": "中欧价值发现A",
-    "160706": "沪深300LOF",
-    "001668": "汇添富全球移动互联A",
-    "118001": "易方达亚洲精选",
-    "004965": "泓德致远混合A",
-    "450009": "国富中小盘A",
-}
+# ── 用户持仓基金（从统一 holdings.json 读取）───────────────────
+import pathlib as _pathlib
+_HOLDINGS_PATH = _pathlib.Path(__file__).parent.parent.parent.parent / "holdings.json"
+
+def _load_fund_list():
+    """从 holdings.json 读取基金列表"""
+    if _HOLDINGS_PATH.exists():
+        with open(_HOLDINGS_PATH, encoding='utf-8') as f:
+            data = json.load(f)
+        return {code: info["name"] for code, info in data.get("funds", {}).items()}
+    # 兜底：如果 holdings.json 不存在，用硬编码
+    return {
+        "163402": "兴全趋势投资",
+        "006113": "汇添富创新医药A",
+        "519069": "汇添富价值精选A",
+        "166002": "中欧新蓝筹A",
+        "000979": "景顺长城沪港深精选A",
+        "006751": "富国互联科技A",
+        "004477": "嘉实沪港深回报",
+        "001371": "富国沪港深价值精选A",
+        "166005": "中欧价值发现A",
+        "160706": "沪深300LOF",
+        "001668": "汇添富全球移动互联A",
+        "118001": "易方达亚洲精选",
+        "004965": "泓德致远混合A",
+        "450009": "国富中小盘A",
+    }
+
+MY_FUNDS = _load_fund_list()
 
 OUTPUT_PATH = Path(__file__).parent.parent.parent / "market-alert" / "references" / "fund_holdings.json"
 FUND_LIST_URL = "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code={fund}&topline=10&year=2026&month=03&r=0.{rand}"
