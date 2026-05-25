@@ -680,7 +680,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "执行基金持仓穿透数据更新（每周一早8:00）。\n\n运行命令：\npython3 ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts/update_fund_holdings.py\n\n完成后通过飞书发送更新结果给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n注意：只操作招财自己的 workspace。",
+        "message": "执行基金持仓穿透数据更新（每周一早8:00）。\n\n运行命令：\npython3 ~/.openclaw/workspace-zhaocai/scripts/fund_penetration.py --update\n\n完成后通过飞书发送更新结果给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。\n\n注意：只操作招财自己的 workspace。",
         "timeoutSeconds": 300
       },
       "delivery": {
