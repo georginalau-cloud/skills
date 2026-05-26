@@ -54,7 +54,13 @@ _DIRECT_OPENER = None
 def _get_opener():
     global _DIRECT_OPENER
     if _DIRECT_OPENER is None:
-        _DIRECT_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        https_handler = urllib.request.HTTPSHandler(context=ctx)
+        proxy_handler = urllib.request.ProxyHandler({})
+        _DIRECT_OPENER = urllib.request.build_opener(proxy_handler, https_handler)
     return _DIRECT_OPENER
 
 def _urlget(url, timeout=12, encoding='utf-8'):

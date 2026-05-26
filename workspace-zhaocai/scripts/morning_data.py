@@ -37,7 +37,13 @@ _OPENER = None
 def _get_opener():
     global _OPENER
     if _OPENER is None:
-        _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        https_handler = urllib.request.HTTPSHandler(context=ctx)
+        proxy_handler = urllib.request.ProxyHandler({})
+        _OPENER = urllib.request.build_opener(proxy_handler, https_handler)
     return _OPENER
 
 def _urlget(url, timeout=10, encoding='utf-8'):
@@ -145,20 +151,26 @@ def fetch_us_indexes() -> dict:
     result = {}
     try:
         raw = _urlget(url, encoding='gbk')
-        names = {"int_dji": "道琼斯", "int_nasdaq": "纳斯达克", "int_sp500": "标普500"}
-        for sym, name in names.items():
-            pattern = rf'hq_str_{sym}="([^"]*)"'
-            m = re.search(pattern, raw)
-            if m:
-                parts = m.group(1).split(',')
-                if len(parts) >= 2:
-                    try:
-                        result[name] = {
-                            "current": float(parts[0]),
-                            "change_pct": float(parts[1]) if len(parts) > 1 else 0,
-                        }
-                    except ValueError:
-                        pass
+        # 格式: var hq_str_int_dji="道琼斯,46247.29,299.97,0.65";
+        for line in raw.strip().split('\n'):
+            if '=""' in line:
+                continue
+            m = re.search(r'hq_str_(int_\w+)="([^"]*)"', line)
+            if not m:
+                continue
+            sym = m.group(1)
+            parts = m.group(2).split(',')
+            if len(parts) >= 4:
+                names = {"int_dji": "道琼斯", "int_nasdaq": "纳斯达克", "int_sp500": "标普500"}
+                name = names.get(sym, parts[0])
+                try:
+                    result[name] = {
+                        "current": float(parts[1]),
+                        "change": float(parts[2]),
+                        "change_pct": float(parts[3]),
+                    }
+                except ValueError:
+                    pass
     except Exception:
         pass
     return result
@@ -170,27 +182,40 @@ def fetch_us_indexes() -> dict:
 
 def fetch_forex() -> dict:
     """获取主要汇率"""
+    # 新浪外汇接口用小写代码
     pairs = {
-        "USDCNY": "美元/人民币",
-        "NZDCNY": "纽元/人民币",
-        "NZDUSD": "纽元/美元",
-        "HKDCNY": "港币/人民币",
+        "fx_susdcny": "美元/人民币",
+        "fx_snzdcny": "纽元/人民币",
+        "fx_snzdusd": "纽元/美元",
+        "fx_shkdcny": "港币/人民币",
     }
+    symbols = ",".join(pairs.keys())
+    url = f"https://hq.sinajs.cn/list={symbols}"
     result = {}
-    for pair, name in pairs.items():
-        url = f"https://hq.sinajs.cn/list=fx_s{pair}"
-        try:
-            raw = _urlget(url, encoding='gbk')
-            if '=""' not in raw:
-                data = raw.split('"')[1].split(',') if '"' in raw else []
-                if len(data) >= 2:
+    try:
+        raw = _urlget(url, encoding='gbk')
+        for line in raw.strip().split('\n'):
+            if '=""' in line:
+                continue
+            m = re.search(r'hq_str_(\w+)="([^"]*)"', line)
+            if not m:
+                continue
+            sym = m.group(1)
+            name = pairs.get(sym, sym)
+            parts = m.group(2).split(',')
+            # 格式: 时间,买入价,卖出价,最低价,... 或 时间,现价,买入,卖出,...
+            if len(parts) >= 4:
+                try:
+                    # 取第二个字段作为当前汇率
+                    rate = float(parts[1])
                     result[name] = {
-                        "pair": pair,
-                        "rate": float(data[1]),
-                        "change_pct": float(data[7]) if len(data) > 7 else 0,
+                        "pair": sym.replace("fx_s", "").upper(),
+                        "rate": rate,
                     }
-        except Exception:
-            pass
+                except ValueError:
+                    pass
+    except Exception:
+        pass
     return result
 
 
@@ -293,7 +318,7 @@ def main():
         # 外汇
         print(f"\n  【外汇】")
         for name, d in data.get("forex", {}).items():
-            print(f"  {name}: {d['rate']:.4f} ({d['change_pct']:+.2f}%)")
+            print(f"  {name}: {d['rate']:.4f}")
 
         # 持仓
         p = data["portfolio"]
