@@ -91,9 +91,10 @@ def load_funds() -> dict:
 # ════════════════════════════════════════════════════════════
 
 def fetch_fund_holdings(fund_code: str) -> dict:
-    """从天天基金网抓取单只基金的最新季报持仓（TOP10重仓股）"""
+    """从天天基金网抓取单只基金的最新季报全部持仓（不限TOP10）"""
+    # topline=50 抓取尽可能多的持仓（天天基金最多展示全部披露的）
     url = (f"https://fundf10.eastmoney.com/FundArchivesDatas.aspx"
-           f"?type=jjcc&code={fund_code}&topline=10&year=&month=&r=0.{int(time.time()) % 100}")
+           f"?type=jjcc&code={fund_code}&topline=50&year=&month=&r=0.{int(time.time()) % 100}")
     try:
         raw = _urlget(url, encoding='utf-8')
     except Exception as e:
@@ -132,7 +133,49 @@ def fetch_fund_holdings(fund_code: str) -> dict:
         except (ValueError, IndexError):
             continue
 
-    return {"period": period, "holdings": holdings}
+    # 同时尝试抓取债券持仓
+    bonds = _fetch_fund_bonds(fund_code)
+
+    return {"period": period, "holdings": holdings, "bonds": bonds}
+
+
+def _fetch_fund_bonds(fund_code: str) -> list:
+    """抓取基金债券持仓（季报披露的前5大债券）"""
+    url = (f"https://fundf10.eastmoney.com/FundArchivesDatas.aspx"
+           f"?type=zqcc&code={fund_code}&topline=20&year=&month=&r=0.{int(time.time()) % 100}")
+    try:
+        raw = _urlget(url, encoding='utf-8')
+    except Exception:
+        return []
+
+    m = re.search(r"content:['\"](.+?)['\"],\s*arryear", raw, re.DOTALL)
+    if not m:
+        return []
+
+    html = m.group(1).replace("\\'", "'")
+    bonds = []
+    rows = re.findall(r"<tr>(.*?)</tr>", html, re.DOTALL)
+    for row in rows:
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
+        if len(cells) < 5:
+            continue
+        clean = [re.sub(r"<[^>]+>", "", c).strip().replace("&nbsp;", "").replace(",", "") for c in cells]
+        try:
+            seq = clean[0].strip()
+            if not seq.isdigit():
+                continue
+            code = clean[1].strip()
+            name = clean[2].strip()
+            pct_str = clean[3].strip().replace("%", "") if len(clean) > 3 else "0"
+            bonds.append({
+                "code": code,
+                "name": name,
+                "pct": float(pct_str) if pct_str else 0,
+                "type": "bond",
+            })
+        except (ValueError, IndexError):
+            continue
+    return bonds
 
 
 def fetch_fund_c1(fund_code: str) -> float:
@@ -169,10 +212,11 @@ def update_all_holdings(funds: dict, target_fund: str = None):
         h_result = fetch_fund_holdings(fid)
         if "error" in h_result:
             print(f"  ⚠️ 重仓股: {h_result['error']}")
-            results[fid] = {"name": info["name"], "error": h_result["error"], "holdings": [], "c1": 0}
+            results[fid] = {"name": info["name"], "error": h_result["error"], "holdings": [], "bonds": [], "c1": 0}
         else:
             count = len(h_result["holdings"])
-            print(f"  ✅ {h_result['period']} | {count}只重仓股")
+            bonds_count = len(h_result.get("bonds", []))
+            print(f"  ✅ {h_result['period']} | {count}只重仓股" + (f" + {bonds_count}只债券" if bonds_count else ""))
             for h in h_result["holdings"][:3]:
                 print(f"     {h['code']} {h['name']} {h['pct']:.2f}%")
             if count > 3:
@@ -187,6 +231,8 @@ def update_all_holdings(funds: dict, target_fund: str = None):
                 "period": h_result["period"],
                 "c1": c1,
                 "holdings": h_result["holdings"],
+                "bonds": h_result.get("bonds", []),
+                "stock_count": count,
             }
 
         time.sleep(0.8)  # 限流
