@@ -539,9 +539,41 @@
       "state": {}
     },
     {
+      "id": "zhaocai-1440-tail-market",
+      "agentId": "zhaocai",
+      "name": "招财-14:40尾盘选股",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 14 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行尾盘选股（交易日14:40）。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n## 第一步：运行尾盘选股脚本\n\n```bash\npython3 ~/.openclaw/workspace-zhaocai/scripts/tail_market.py --json\n```\n\n## 第二步：检查已持仓标的是否需要调仓\n\n运行：\n```bash\npython3 ~/.openclaw/workspace-zhaocai/scripts/lookup.py --stock 300896 600309 600352 688363 002176 002172 000652 002551 600221 --json\n```\n\n对每只持仓标的判断：\n- 今日涨幅>5% → 考虑止盈（标注目标价位）\n- 今日跌幅>5% + 破均线 → 考虑止损\n- 其他 → 持有\n\n## 第三步：生成报告\n\n### 报告结构\n1. 已持仓调仓建议（基于 lookup.py 实时数据）\n   - 🟡 止盈：[标的] ¥xx（+x%），建议明日挂¥xx减仓\n   - 🔴 止损：[标的] ¥xx（-x%），建议明日挂¥xx清仓\n   - ✅ 持有：其余标的无需操作\n\n2. 新标的倒车接人（基于 tail_market.py 输出）\n   - 3-5只候选，每只含：代码/名称/现价/今日跌幅/看涨逻辑\n\n### 铁规\n- 所有价格来自脚本输出，禁止编造\n- 调仓建议必须有技术面支撑（均线/MACD/RSI）\n- 新标的必须是 tail_market.py 筛出来的，禁止自己编\n- 报告直接输出正文\n\n通过飞书发送（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。",
+        "timeoutSeconds": 600
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai"
+      },
+      "failureAlert": {
+        "after": 3,
+        "channel": "feishu",
+        "to": "ou_e47f62cad7fec339fba10ae6e1f5a3c9",
+        "accountId": "zhaocai",
+        "cooldownMs": 3600000
+      },
+      "state": {}
+    },
+    {
       "id": "zhaocai-1445-fund-tail-analysis",
       "agentId": "zhaocai",
-      "name": "招财-14:45基金尾盘分析",
+      "name": "招财-14:45基金穿透+趋势预测",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -552,8 +584,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "执行基金尾盘分析（交易日14:45，距收盘15分钟）。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n## 输出结构（严格按以下顺序）\n\n### 一、大盘概况\n上证指数：xxxx.xx（+x.xx%）\n沪深300：xxxx.xx（+x.xx%）\n创业板指：xxxx.xx（+x.xx%）\n成交额：x.xx万亿（vs昨日放量/缩量）\n\n### 二、场内ETF实时行情（4只）\n每只必须包含：\n| 代码 | 名称 | 现价 | 今日涨跌% | 今日盈亏¥ | 总浮盈¥(%) |\n\n计算公式：\n- 今日盈亏 = (现价 - 昨收) × 持仓股数（从 holdings.json 读取）\n- 总浮盈 = (现价 - 成本) × 持仓股数\n- 如果数据不可用，标注\"数据暂不可用\"，不要留空用\"—\"\n\n### 三、14只场外基金盘中估值\n每只必须包含：\n| 基金名 | 估算净值 | 今日涨跌% | 今日预估盈亏¥ | 状态 |\n\n计算公式：\n- 今日预估盈亏 = 你的持仓份额 × 昨日净值 × 今日估算涨跌%\n- 持仓份额从 holdings.json 的 funds 部分读取\n- 昨日净值用天天基金 API 获取\n- 如果盘中估值不可用，用穿透重仓股涨跌估算\n\n### 四、穿透重仓股今日表现（仅A股+港股，不含隔夜美股）\nTOP5涨 和 TOP5跌，每只必须包含：\n| 股票名 | 代码 | 今日涨跌% | 关联基金 | 对你的影响≈¥xx |\n\n计算公式：\n- 对你的影响 = 该股涨跌% × 该股在基金中的持仓比例% × 你持有该基金的市值\n- 你持有该基金的市值 = 份额 × 最新净值\n- 如果同一只股被多只基金持有，合计影响\n\n⚠️ 重要：\n- 只展示今天A股交易时段的数据，不展示隔夜美股（那是晨报的内容）\n- 如果穿透数据中有美股/港股且今天有交易（港股），可以展示港股\n- 美股数据标注\"（隔夜）\"并放在最后，不混入TOP排名\n\n### 五、尾盘操作建议\n对每只基金给出明确操作建议：\n| 操作 | 基金 | 今日涨跌 | 理由 |\n\n操作分类：\n- ⚠️ 止盈/减仓：单日涨幅>3% 或 连续3日累计涨幅>5%\n- 🟢 加仓：单日跌幅>2% 且长期看好（估值低位）\n- ✅ 持有：正常波动，无需操作\n\n### 六、汇总\n- 场内ETF今日合计盈亏：¥xxx\n- 场外基金今日预估合计盈亏：≈¥xxx\n- 今日持仓总预估盈亏：≈¥xxx\n\n## 铁规\n- 所有金额必须计算出来，不能只给百分比\n- 大盘必须报上证指数具体点位和涨跌幅\n- 穿透重仓股只展示今天有交易的（A股+港股），美股隔夜数据不混入\n- \"数据不可用\"就直接说，不要用\"—\"糊弄\n- 报告直接输出正文，不加系统通知式文字",
-        "timeoutSeconds": 300
+        "message": "执行基金穿透盈亏分析（交易日14:45）。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n## 第一步：运行穿透脚本\n\n```bash\npython3 ~/.openclaw/workspace-zhaocai/scripts/fund_penetration.py --json\n```\n\n## 第二步：基于脚本数据生成报告\n\n### 报告结构\n1. 每只基金今日穿透盈亏（来自脚本JSON）\n2. 穿透重仓股TOP5涨/TOP5跌\n3. 板块轮动分析：哪些板块今天强/弱，对应基金明天可能的趋势\n4. 调仓建议：\n   - 哪些基金因板块轮动明天可能继续涨 → 持有/加仓\n   - 哪些基金板块今天见顶 → 止盈/减仓\n   - 哪些基金板块今天回调但趋势未变 → 逢低加仓\n5. 汇总：今日穿透总盈亏\n\n### 铁规\n- 所有数字来自 fund_penetration.py 输出，禁止编造\n- 板块轮动判断需要 web_search 搜索今日板块涨跌排名\n- 调仓建议必须有板块逻辑支撑，不能凭感觉\n- 报告直接输出正文\n\n通过飞书发送（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）。",
+        "timeoutSeconds": 600
       },
       "delivery": {
         "mode": "announce",

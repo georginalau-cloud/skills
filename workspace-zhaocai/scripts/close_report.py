@@ -338,16 +338,18 @@ def print_report(data: dict):
     if "error" in fr:
         print(f"\n  【基金】⚠️ {fr['error']}")
     else:
-        print(f"\n  【基金穿透（{len(fr.get('funds',[]))}只）】")
-        for f in sorted(fr.get("funds", []), key=lambda x: -x.get("pnl", 0)):
+        print(f"\n  【基金（{len(fr.get('funds',[]))}只）】")
+        total_fund_pnl = 0
+        for f in sorted(fr.get("funds", []), key=lambda x: -abs(x.get("pnl", 0))):
             if f.get("error"):
                 print(f"  ⚠️ {f['name']}: {f['error']}")
                 continue
             emoji = "🟢" if f["pnl"] > 0 else ("🔴" if f["pnl"] < 0 else "⚪")
-            method = "穿透" if f.get("method") == "penetration" else "估值"
-            print(f"  {emoji} {f['name']:<12} NAV={f['nav']:.4f}({f.get('nav_chg',0):+.2f}%)"
-                  f" | 今日{f['pnl']:+,.0f}元 [{method}]")
-        print(f"  基金合计: {fr.get('grand_total',0):+,.0f}元")
+            nav_chg = f.get('nav_chg', 0) or 0
+            print(f"  {emoji} {f['name']:<14} {nav_chg:+.2f}% | 今日{f['pnl']:+,.0f}元")
+            total_fund_pnl += f["pnl"]
+        print(f"  {'─'*40}")
+        print(f"  基金合计: {total_fund_pnl:+,.0f}元")
 
     # 汇总
     s = data["summary"]
