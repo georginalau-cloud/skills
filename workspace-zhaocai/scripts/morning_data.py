@@ -24,6 +24,12 @@ import urllib.request
 from pathlib import Path
 from datetime import datetime, timedelta
 
+# ── 强制清除代理环境变量（国内金融接口不能走代理）──
+import os as _os
+for _k in ('http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'all_proxy', 'ALL_PROXY'):
+    _os.environ.pop(_k, None)
+
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE = SCRIPT_DIR.parent
 HOLDINGS_PATH = WORKSPACE / "holdings.json"

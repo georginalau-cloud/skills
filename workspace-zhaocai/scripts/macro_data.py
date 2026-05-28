@@ -24,6 +24,12 @@ import ssl
 import argparse
 from datetime import datetime
 
+# ── 强制清除代理环境变量（国内金融接口不能走代理）──
+import os as _os
+for _k in ('http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'all_proxy', 'ALL_PROXY'):
+    _os.environ.pop(_k, None)
+
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Referer": "https://finance.sina.com.cn",
