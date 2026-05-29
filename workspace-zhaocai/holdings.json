@@ -1,67 +1,272 @@
 {
   "_comment": "统一持仓数据源 — 所有 skill 从此文件读取，调仓后只需更新这一个文件",
-  "_updated": "2026-05-23",
-
+  "_updated": "2026-05-29",
   "stocks": {
-    "300896": {"name": "爱美客",   "shares": 420,  "cost": 478.847, "sector": "医美"},
-    "600309": {"name": "万华化学", "shares": 300,  "cost": 88.690,  "sector": "化工"},
-    "600352": {"name": "浙江龙盛", "shares": 1000, "cost": 12.924,  "sector": "化工"},
-    "688363": {"name": "华熙生物", "shares": 300,  "cost": 238.043, "sector": "医美"},
-    "002176": {"name": "江特电机", "shares": 1000, "cost": 25.506,  "sector": "新能源"},
-    "002172": {"name": "澳洋健康", "shares": 2000, "cost": 6.530,   "sector": "医美"},
-    "000652": {"name": "泰达股份", "shares": 1000, "cost": 10.105,  "sector": "地产"},
-    "002551": {"name": "尚荣医疗", "shares": 1000, "cost": 4.600,   "sector": "医疗"},
-    "600221": {"name": "海航控股", "shares": 1000, "cost": 6.236,   "sector": "航空"}
+    "300896": {
+      "name": "爱美客",
+      "shares": 420,
+      "cost": 478.847,
+      "sector": "医美"
+    },
+    "600309": {
+      "name": "万华化学",
+      "shares": 300,
+      "cost": 88.69,
+      "sector": "化工"
+    },
+    "600352": {
+      "name": "浙江龙盛",
+      "shares": 1000,
+      "cost": 12.924,
+      "sector": "化工"
+    },
+    "688363": {
+      "name": "华熙生物",
+      "shares": 300,
+      "cost": 238.043,
+      "sector": "医美"
+    },
+    "002176": {
+      "name": "江特电机",
+      "shares": 1000,
+      "cost": 25.506,
+      "sector": "新能源"
+    },
+    "002172": {
+      "name": "澳洋健康",
+      "shares": 2000,
+      "cost": 6.53,
+      "sector": "医美"
+    },
+    "000652": {
+      "name": "泰达股份",
+      "shares": 1000,
+      "cost": 10.105,
+      "sector": "地产"
+    },
+    "002551": {
+      "name": "尚荣医疗",
+      "shares": 1000,
+      "cost": 4.6,
+      "sector": "医疗"
+    },
+    "600221": {
+      "name": "海航控股",
+      "shares": 1000,
+      "cost": 6.236,
+      "sector": "航空"
+    }
   },
-
   "etfs": {
-    "516650": {"name": "有色金属ETF基金",     "shares": 8000, "cost": 2.449, "sector": "有色金属"},
-    "159566": {"name": "储能电池ETF易方达", "shares": 3000, "cost": 2.085, "sector": "新能源"},
-    "161725": {"name": "招商中证白酒A",    "shares": 5000, "cost": 1.355, "sector": "白酒"},
-    "400201": {"name": "海投5",           "shares": 3000, "cost": 0.750, "sector": "海外"}
+    "516650": {
+      "name": "有色金属ETF基金",
+      "shares": 8000,
+      "cost": 2.449,
+      "sector": "有色金属"
+    },
+    "159566": {
+      "name": "储能电池ETF易方达",
+      "shares": 3000,
+      "cost": 2.085,
+      "sector": "新能源"
+    },
+    "161725": {
+      "name": "招商中证白酒A",
+      "shares": 5000,
+      "cost": 1.355,
+      "sector": "白酒"
+    },
+    "400201": {
+      "name": "海投5",
+      "shares": 3000,
+      "cost": 0.75,
+      "sector": "海外"
+    }
   },
-
   "funds": {
     "_comment": "场外基金共27只（跨4个账户）。同一基金多账户持有时，holdings_detail 列出各账户明细，shares 为合计份额",
-
-    "166002":  {"name": "中欧新蓝筹A",           "shares": 39971.71,  "cost": 2.3842, "type": "A股主动型", "account": "华泰"},
-    "006751":  {"name": "富国互联科技A",          "shares": 25054.03,  "cost": 3.1318, "type": "A股主动型", "account": "华泰"},
-    "163402":  {"name": "兴全趋势投资",           "shares": 146934.06, "type": "A股主动型",
-               "holdings_detail": [
-                 {"account": "华泰", "shares": 134513.34, "cost": 0.7324},
-                 {"account": "支付宝", "shares": 12420.72, "cost": 0.8051}
-               ]},
-    "004477":  {"name": "嘉实沪港深回报",          "shares": 37851.13,  "cost": 1.7173, "type": "沪港深", "account": "华泰"},
-    "001371":  {"name": "富国沪港深价值精选A",     "shares": 33887.86,  "cost": 1.5485, "type": "沪港深", "account": "华泰"},
-    "166005":  {"name": "中欧价值发现A",          "shares": 13016.35,  "cost": 2.6121, "type": "A股主动型", "account": "华泰"},
-    "160706":  {"name": "嘉实沪深300ETF联接A",    "shares": 18541.19,  "cost": 1.0631, "type": "A股指数型", "account": "华泰"},
-    "001668":  {"name": "汇添富全球移动互联A",     "shares": 5631.84,   "type": "QDII",
-               "holdings_detail": [
-                 {"account": "华泰", "shares": 4206.06, "cost": 3.4530},
-                 {"account": "微信", "shares": 1425.78, "cost": 2.8055}
-               ]},
-    "000979":  {"name": "景顺长城沪港深精选A",     "shares": 6044.38,   "cost": 3.1992, "type": "沪港深", "account": "华泰"},
-    "118001":  {"name": "易方达亚洲精选",          "shares": 5978.46,   "cost": 1.3381, "type": "QDII", "account": "华泰"},
-    "004965":  {"name": "泓德致远混合A",          "shares": 2415.48,   "cost": 2.0700, "type": "A股主动型", "account": "华泰"},
-    "519069":  {"name": "汇添富价值精选A",        "shares": 1127.23,   "cost": 4.4357, "type": "A股主动型", "account": "华泰"},
-
-    "007343":  {"name": "嘉实科技创新混合",        "shares": 15100.91,  "cost": 2.9345, "type": "A股主动型", "account": "支付宝"},
-    "018124":  {"name": "永赢先进制造智选混合A",   "shares": 15904.07,  "cost": 2.2541, "type": "A股主动型", "account": "支付宝"},
-    "006533":  {"name": "易方达科融混合",          "shares": 3118.66,   "cost": 6.4130, "type": "A股主动型", "account": "支付宝"},
-    "010803":  {"name": "天弘庆享债券A",          "shares": 2988.04,   "cost": 1.0040, "type": "债券型", "account": "支付宝"},
-    "002381":  {"name": "东海祥瑞债券A",          "shares": 16794.05,  "cost": 1.1929, "type": "债券型", "account": "支付宝"},
-    "015915":  {"name": "永赢医药创新智选混合A",   "shares": 2606.04,   "cost": 1.9186, "type": "A股主动型", "account": "支付宝"},
-    "015916":  {"name": "永赢医药创新智选混合C",   "shares": 2635.74,   "cost": 1.8970, "type": "A股主动型", "account": "支付宝"},
-
-    "009873":  {"name": "中欧责任投资混合C",      "shares": 23018.49,  "cost": 1.3033, "type": "A股主动型", "account": "微信"},
-    "519732":  {"name": "交银定期支付双息平衡",    "shares": 1162.09,   "cost": 7.5149, "type": "A股主动型", "account": "微信"},
-
-    "009265":  {"name": "易方达消费精选股票",      "shares": 1361.93,   "cost": 1.4685, "type": "A股主动型", "account": "雪球"},
-    "005827":  {"name": "易方达蓝筹精选混合",      "shares": 604.88,    "cost": 3.3064, "type": "A股主动型", "account": "雪球"},
-    "000934":  {"name": "国富大中华精选混合",      "shares": 6490.10,   "cost": 3.0816, "type": "QDII", "account": "雪球"},
-    "002891":  {"name": "华夏移动互联混合",        "shares": 8806.81,   "cost": 2.8387, "type": "QDII", "account": "雪球"}
+    "166002": {
+      "name": "中欧新蓝筹A",
+      "shares": 39971.71,
+      "cost": 2.3842,
+      "type": "A股主动型",
+      "account": "华泰"
+    },
+    "006751": {
+      "name": "富国互联科技A",
+      "shares": 25054.03,
+      "cost": 3.1318,
+      "type": "A股主动型",
+      "account": "华泰"
+    },
+    "163402": {
+      "name": "兴全趋势投资",
+      "shares": 146934.06,
+      "type": "A股主动型",
+      "holdings_detail": [
+        {
+          "account": "华泰",
+          "shares": 134513.34,
+          "cost": 0.7324
+        },
+        {
+          "account": "支付宝",
+          "shares": 12420.72,
+          "cost": 0.8051
+        }
+      ]
+    },
+    "004477": {
+      "name": "嘉实沪港深回报",
+      "shares": 37851.13,
+      "cost": 1.7173,
+      "type": "沪港深",
+      "account": "华泰"
+    },
+    "001371": {
+      "name": "富国沪港深价值精选A",
+      "shares": 33887.86,
+      "cost": 1.5485,
+      "type": "沪港深",
+      "account": "华泰"
+    },
+    "166005": {
+      "name": "中欧价值发现A",
+      "shares": 13016.35,
+      "cost": 2.6121,
+      "type": "A股主动型",
+      "account": "华泰"
+    },
+    "160706": {
+      "name": "嘉实沪深300ETF联接A",
+      "shares": 18541.19,
+      "cost": 1.0631,
+      "type": "A股指数型",
+      "account": "华泰"
+    },
+    "001668": {
+      "name": "汇添富全球移动互联A",
+      "shares": 5631.84,
+      "type": "QDII",
+      "holdings_detail": [
+        {
+          "account": "华泰",
+          "shares": 4206.06,
+          "cost": 3.453
+        },
+        {
+          "account": "微信",
+          "shares": 1425.78,
+          "cost": 2.8055
+        }
+      ]
+    },
+    "000979": {
+      "name": "景顺长城沪港深精选A",
+      "shares": 6044.38,
+      "cost": 3.1992,
+      "type": "沪港深",
+      "account": "华泰"
+    },
+    "118001": {
+      "name": "易方达亚洲精选",
+      "shares": 5978.46,
+      "cost": 1.3381,
+      "type": "QDII",
+      "account": "华泰"
+    },
+    "004965": {
+      "name": "泓德致远混合A",
+      "shares": 2415.48,
+      "cost": 2.07,
+      "type": "A股主动型",
+      "account": "华泰"
+    },
+    "519069": {
+      "name": "汇添富价值精选A",
+      "shares": 1127.23,
+      "cost": 4.4357,
+      "type": "A股主动型",
+      "account": "华泰"
+    },
+    "007343": {
+      "name": "嘉实科技创新混合",
+      "shares": 15100.91,
+      "cost": 2.9345,
+      "type": "A股主动型",
+      "account": "支付宝"
+    },
+    "018124": {
+      "name": "永赢先进制造智选混合A",
+      "shares": 15904.07,
+      "cost": 2.2541,
+      "type": "A股主动型",
+      "account": "支付宝"
+    },
+    "006533": {
+      "name": "易方达科融混合",
+      "shares": 3118.66,
+      "cost": 6.413,
+      "type": "A股主动型",
+      "account": "支付宝"
+    },
+    "010803": {
+      "name": "天弘庆享债券A",
+      "shares": 2988.04,
+      "cost": 1.004,
+      "type": "债券型",
+      "account": "支付宝"
+    },
+    "002381": {
+      "name": "东海祥瑞债券A",
+      "shares": 16794.05,
+      "cost": 1.1929,
+      "type": "债券型",
+      "account": "支付宝"
+    },
+    "015915": {
+      "name": "永赢医药创新智选混合A",
+      "shares": 2606.04,
+      "cost": 1.9186,
+      "type": "A股主动型",
+      "account": "支付宝"
+    },
+    "015916": {
+      "name": "永赢医药创新智选混合C",
+      "shares": 2635.74,
+      "cost": 1.897,
+      "type": "A股主动型",
+      "account": "支付宝"
+    },
+    "009873": {
+      "name": "中欧责任投资混合C",
+      "shares": 23018.49,
+      "cost": 1.3033,
+      "type": "A股主动型",
+      "account": "微信"
+    },
+    "519732": {
+      "name": "交银定期支付双息平衡",
+      "shares": 1162.09,
+      "cost": 7.5149,
+      "type": "A股主动型",
+      "account": "微信"
+    },
+    "000934": {
+      "name": "国富大中华精选混合",
+      "shares": 6490.1,
+      "cost": 3.0816,
+      "type": "QDII",
+      "account": "雪球"
+    },
+    "002891": {
+      "name": "华夏移动互联混合",
+      "shares": 8806.81,
+      "cost": 2.8387,
+      "type": "QDII",
+      "account": "雪球"
+    }
   },
-
   "data_sources": {
     "_comment": "数据源优先级配置",
     "a_stock_price": {
@@ -84,6 +289,76 @@
       "P1": "hq.sinajs.cn（新浪外汇）",
       "P2": "push2.eastmoney.com（东方财富外汇）",
       "P3": "akshare currency_boc_safe()（中行牌价）"
+    }
+  },
+  "hk_stocks": {
+    "02577": {
+      "name": "英诺赛科",
+      "shares": 100,
+      "cost": 74.7,
+      "currency": "HKD"
+    },
+    "03431": {
+      "name": "南方港韩科技",
+      "shares": 1000,
+      "cost": 11.05,
+      "currency": "HKD"
+    },
+    "06603": {
+      "name": "IFBH",
+      "shares": 200,
+      "cost": 27.597,
+      "currency": "HKD"
+    },
+    "02824": {
+      "name": "易方达黄金矿",
+      "shares": 100,
+      "cost": 14.985,
+      "currency": "HKD"
+    },
+    "09699": {
+      "name": "顺丰同城",
+      "shares": 200,
+      "cost": 18.112,
+      "currency": "HKD"
+    },
+    "02279": {
+      "name": "雍禾医疗",
+      "shares": 500,
+      "cost": 15.8,
+      "currency": "HKD"
+    },
+    "06821": {
+      "name": "凯莱英",
+      "shares": 140,
+      "cost": 277.357,
+      "currency": "HKD"
+    },
+    "02150": {
+      "name": "奈雪的茶",
+      "shares": 500,
+      "cost": 19.8,
+      "currency": "HKD"
+    },
+    "06993": {
+      "name": "蓝月亮集团",
+      "shares": 500,
+      "cost": 12.16,
+      "currency": "HKD"
+    }
+  },
+  "us_stocks": {
+    "NIO": {
+      "name": "蔚来",
+      "shares": 55,
+      "cost": 43.27,
+      "currency": "USD"
+    },
+    "SNTG": {
+      "name": "叁腾科技",
+      "shares": 1,
+      "cost": 25.0,
+      "currency": "USD"
     }
   }
 }
