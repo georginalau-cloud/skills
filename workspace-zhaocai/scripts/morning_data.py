@@ -253,6 +253,115 @@ def fetch_a_indexes() -> dict:
     return result
 
 
+def fetch_hk_snapshot(hk_holdings: dict) -> list:
+    """获取港股持仓行情（腾讯财经）"""
+    if not hk_holdings:
+        return []
+    results = []
+    symbols = [f"hk{code.zfill(5)}" for code in hk_holdings.keys()]
+    url = f"https://qt.gtimg.cn/q={','.join(symbols)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with _get_opener().open(req, timeout=10) as resp:
+            raw = resp.read().decode('gbk', errors='ignore')
+        for line in raw.strip().split(';'):
+            if '~' not in line:
+                continue
+            parts = line.split('~')
+            if len(parts) < 35:
+                continue
+            code = parts[2].strip().zfill(5)
+            name = parts[1].strip()
+            try:
+                price = float(parts[3])
+                change_pct = float(parts[32])
+                if price > 0 and code in hk_holdings:
+                    info = hk_holdings[code]
+                    mv = price * info["shares"]
+                    pnl = (price - info["cost"]) * info["shares"]
+                    results.append({
+                        "code": code, "name": info["name"],
+                        "price": price, "change_pct": change_pct,
+                        "shares": info["shares"], "cost": info["cost"],
+                        "mv_hkd": round(mv, 0),
+                        "pnl_hkd": round(pnl, 0),
+                        "pnl_pct": round(pnl / (info["cost"] * info["shares"]) * 100, 2),
+                    })
+            except (ValueError, IndexError):
+                pass
+    except Exception:
+        pass
+    return results
+
+
+def fetch_us_snapshot(us_holdings: dict) -> list:
+    """获取美股持仓行情（腾讯财经）"""
+    if not us_holdings:
+        return []
+    results = []
+    symbols = [f"us{code.upper()}" for code in us_holdings.keys()]
+    url = f"https://qt.gtimg.cn/q={','.join(symbols)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with _get_opener().open(req, timeout=10) as resp:
+            raw = resp.read().decode('gbk', errors='ignore')
+        for line in raw.strip().split(';'):
+            if '~' not in line:
+                continue
+            parts = line.split('~')
+            if len(parts) < 35:
+                continue
+            code = parts[2].strip().upper()
+            name = parts[1].strip()
+            try:
+                price = float(parts[3])
+                change_pct = float(parts[32])
+                if price > 0 and code in us_holdings:
+                    info = us_holdings[code]
+                    mv = price * info["shares"]
+                    pnl = (price - info["cost"]) * info["shares"]
+                    results.append({
+                        "code": code, "name": info["name"],
+                        "price": price, "change_pct": change_pct,
+                        "shares": info["shares"], "cost": info["cost"],
+                        "mv_usd": round(mv, 0),
+                        "pnl_usd": round(pnl, 0),
+                        "pnl_pct": round(pnl / (info["cost"] * info["shares"]) * 100, 2),
+                    })
+            except (ValueError, IndexError):
+                pass
+    except Exception:
+        pass
+    return results
+
+
+def fetch_fund_navs(funds: dict) -> list:
+    """获取基金最新净值"""
+    results = []
+    for code, info in funds.items():
+        if code.startswith("_") or not isinstance(info, dict) or "shares" not in info:
+            continue
+        url = f"https://fundgz.1234567.com.cn/js/{code}.js?rt={int(time.time())}"
+        try:
+            raw = _urlget(url)
+            m = re.search(r'jsonpgz\((.+)\)', raw)
+            if m and 'dwjz' in m.group(1):
+                d = json.loads(m.group(1))
+                nav = float(d['dwjz'])
+                gszzl = float(d.get('gszzl', 0))
+                mv = nav * info["shares"]
+                results.append({
+                    "code": code, "name": info["name"],
+                    "nav": nav, "gszzl": gszzl,
+                    "shares": info["shares"],
+                    "mv": round(mv, 0),
+                    "type": info.get("type", ""),
+                })
+        except Exception:
+            pass
+    return results
+
+
 # ════════════════════════════════════════════════════════════
 #  主入口
 # ════════════════════════════════════════════════════════════
@@ -264,10 +373,19 @@ def collect_all() -> dict:
     # 持仓代码
     stock_codes = list(holdings.get("stocks", {}).keys())
     etf_codes = list(holdings.get("etfs", {}).keys())
-    all_codes = stock_codes + etf_codes
+    all_a_codes = stock_codes + etf_codes
 
-    print("📥 采集持仓价格...", file=sys.stderr)
-    prices = fetch_stock_snapshot(all_codes)
+    print("📥 采集A股持仓价格...", file=sys.stderr)
+    prices = fetch_stock_snapshot(all_a_codes)
+
+    print("📥 采集港股持仓价格...", file=sys.stderr)
+    hk_data = fetch_hk_snapshot(holdings.get("hk_stocks", {}))
+
+    print("📥 采集美股持仓价格...", file=sys.stderr)
+    us_data = fetch_us_snapshot(holdings.get("us_stocks", {}))
+
+    print("📥 采集基金净值...", file=sys.stderr)
+    fund_data = fetch_fund_navs(holdings.get("funds", {}))
 
     print("📥 采集美股指数...", file=sys.stderr)
     us_indexes = fetch_us_indexes()
@@ -291,6 +409,9 @@ def collect_all() -> dict:
         "us_indexes": us_indexes,
         "forex": forex,
         "portfolio": portfolio,
+        "hk_stocks": hk_data,
+        "us_stocks": us_data,
+        "funds_nav": fund_data,
     }
 
 
