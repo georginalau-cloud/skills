@@ -520,7 +520,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "生成今日A股晨报。\n\n前置判断：非交易日静默退出。\n\n## 脚本链（逐个跑，某个失败不影响其他）\n\n```bash\n# 1. 宏观数据（美股/大宗/外汇/北向）\npython3 ~/.openclaw/workspace-zhaocai/scripts/macro_data.py --json\n\n# 2. 持仓快照（A股指数+个股+ETF昨收盈亏）\npython3 ~/.openclaw/workspace-zhaocai/scripts/morning_data.py --json\n\n# 3. 选股推荐（多因子量化筛选）\npython3 ~/.openclaw/workspace-zhaocai/scripts/morning_picks.py --json\n\n# 4. 风控扫描（仓位集中度+止损预警）\npython3 ~/.openclaw/workspace-zhaocai/scripts/risk_monitor.py --json\n```\n\n每个脚本独立运行。如果某个失败，该部分写\"数据暂不可用\"，继续下一个。\n\n## 报告结构（基于脚本输出）\n\n一、宏观环境（macro_data.py）\n  - 隔夜美股三大指数\n  - 大宗商品（黄金/原油/铜）\n  - 美元指数\n  - 外汇（USD/CNY、NZD/CNY）\n  - 北向资金\n  - 国内政策（web_search，只搜标题，不编数字）\n\n二、持仓现状（morning_data.py）\n  - A股指数\n  - 个股+ETF昨收盈亏\n  - 总市值/累计浮盈\n\n三、风控预警（risk_monitor.py）\n  - 仓位集中度预警\n  - 止损候选\n  - 组合风险等级\n\n四、今日推荐标的（morning_picks.py）\n  - 3-5只量化筛选结果\n  - 每只含：代码/名称/5日涨幅/均线形态/得分/逻辑\n  - 写入 memory/pending/today-picks-{{TODAY}}.md\n\n五、行业景气（web_search，只搜新闻标题，禁止编数字）\n\n## ⛔ 铁规\n1. 所有数字必须来自脚本JSON输出\n2. 推荐标的必须来自 morning_picks.py 输出，禁止自己编\n3. 宏观数字来自 macro_data.py，禁止凭记忆\n4. 脚本失败 → 写\"暂不可用\"，禁止硬编\n5. web_search 只用于搜新闻标题/政策，不用于获取数字",
+        "message": "生成今日A股晨报。\n\n前置判断：非交易日静默退出。\n\n## 脚本链（逐个跑，某个失败不影响其他）\n\n```bash\n# 1. 宏观数据（美股/大宗/外汇/北向）\npython3 ~/.openclaw/workspace-zhaocai/scripts/macro_data.py --json\n\n# 2. 持仓快照（A股指数+个股+ETF昨收盈亏）\npython3 ~/.openclaw/workspace-zhaocai/scripts/morning_data.py --json\n\n# 3. 选股推荐（多因子量化筛选）\npython3 ~/.openclaw/workspace-zhaocai/scripts/morning_picks.py --json\n\n# 4. 风控扫描（仓位集中度+止损预警）\npython3 ~/.openclaw/workspace-zhaocai/scripts/risk_monitor.py --json\n```\n\n每个脚本独立运行。如果某个失败，该部分写\"数据暂不可用\"，继续下一个。\n\n## 报告结构（基于脚本输出）\n\n一、宏观环境（macro_data.py）\n  - 隔夜美股三大指数\n  - 大宗商品（黄金/原油/铜）\n  - 美元指数\n  - 外汇（USD/CNY、NZD/CNY）\n  - 北向资金\n  - 国内政策（web_search，只搜标题，不编数字）\n\n二、持仓现状（morning_data.py）\n  - A股指数\n  - 个股+ETF昨收盈亏\n  - 总市值/累计浮盈\n\n三、风控预警（risk_monitor.py）\n  - 仓位集中度预警\n  - 止损候选\n  - 组合风险等级\n\n四、今日推荐标的（morning_picks.py）\n  - 3-5只量化筛选结果\n  - 每只含：代码/名称/5日涨幅/均线形态/得分/逻辑\n  - 写入 memory/pending/today-picks-{{TODAY}}.md\n\n五、行业景气（web_search，只搜新闻标题，禁止编数字）\n\n## ⛔ 铁规\n1. 所有数字必须来自脚本JSON输出\n2. 推荐标的必须来自 morning_picks.py 输出，禁止自己编\n3. 宏观数字来自 macro_data.py，禁止凭记忆\n4. 脚本失败 → 写\"暂不可用\"，禁止硬编\n5. web_search 只用于搜新闻标题/政策，不用于获取数字\n6. ⚠️ 即使选股脚本失败，也必须基于宏观分析给出：\n   - 今日关注方向（哪些板块可能受益/受损）\n   - 对已持仓标的的影响判断（哪些承压/哪些受益）\n   - 具体操作建议（加仓/减仓/观望）\n   不能只报新闻就完事，必须落地到投资策略\n7. 所有输出必须用中文",
         "timeoutSeconds": 900
       },
       "delivery": {
@@ -648,7 +648,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "执行市场异动扫描。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n运行命令：\n```bash\ncd ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts && python3 scan_alert.py\n```\n\n根据脚本输出判断：\n- 有异动内容 → 通过飞书推送给用户（open_id: ou_e47f62cad7fec339fba10ae6e1f5a3c9，accountId: zhaocai）\n- 无异动（输出为空或「扫描完成: 0 条异动」）→ 静默退出，不发任何消息\n\n⚠️ 如果脚本执行超时或报错（代理/网络问题），不要反复重试，直接静默退出。不要给用户发送技术报错信息（如\"代理问题\"\"Connection aborted\"等）。",
+        "message": "执行市场异动扫描。\n\n前置判断：确认今天是A股交易日，非交易日静默退出。\n\n运行命令：\n```bash\ncd ~/.openclaw/workspace-zhaocai/skills/market-alert/scripts && python3 scan_alert.py\n```\n\n根据脚本输出判断：\n- 有异动内容 → 用中文推送给用户\n- 无异动 → 完全静默，不发任何消息，不回复任何内容\n\n⛔ 严禁：\n- 禁止发送\"NO_REPLY\"、\"All scans complete\"等英文状态信息\n- 禁止发送\"无异动\"\"扫描完成\"等无意义消息\n- 禁止发送技术报错（代理/网络/超时）\n- 无异动 = 什么都不说，完全静默\n- 有异动时必须用中文输出",
         "timeoutSeconds": 180
       },
       "delivery": {
