@@ -36,19 +36,42 @@ def load_holdings():
         return json.load(f)
 
 
-def fetch_hist_closes(code: str, days: int = 120) -> list:
+def fetch_hist_closes(code: str, days: int = 120, market: str = "a") -> list:
     """获取历史收盘价序列"""
-    import akshare as ak
-    try:
-        end = datetime.now().strftime("%Y%m%d")
-        start = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
-        df = ak.stock_zh_a_hist(symbol=code, period="daily",
-                                start_date=start, end_date=end, adjust="qfq")
-        if df.empty:
+    if market == "a":
+        import akshare as ak
+        try:
+            end = datetime.now().strftime("%Y%m%d")
+            start = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
+            df = ak.stock_zh_a_hist(symbol=code, period="daily",
+                                    start_date=start, end_date=end, adjust="qfq")
+            if df.empty:
+                return []
+            return df['收盘'].tolist()[-days:]
+        except Exception:
             return []
-        return df['收盘'].tolist()[-days:]
-    except Exception:
-        return []
+    else:
+        # 港股/美股用 Yahoo Finance
+        import urllib.request, ssl
+        if market == "hk":
+            symbol = f"{code.zfill(4)}.HK"
+        else:
+            symbol = code.upper()
+        period1 = int((datetime.now() - timedelta(days=days + 5)).timestamp())
+        period2 = int(datetime.now().timestamp())
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval=1d"
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+            with opener.open(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+            return [c for c in closes if c is not None][-days:]
+        except Exception:
+            return []
 
 
 def fetch_index_closes(days: int = 120) -> list:
@@ -162,8 +185,9 @@ def run_stats() -> dict:
     """完整统计分析"""
     holdings = load_holdings()
     all_items = {**holdings.get("stocks", {}), **holdings.get("etfs", {})}
-    # 注意：港股/美股使用不同数据源，暂不纳入A股统计分析
-    # 后续可扩展 fetch_hist 支持港股代码
+    # 港股和美股也纳入统计分析
+    hk_items = holdings.get("hk_stocks", {})
+    us_items = holdings.get("us_stocks", {})
 
     # 获取沪深300
     index_closes = fetch_index_closes(120)
@@ -172,8 +196,9 @@ def run_stats() -> dict:
     stats = []
     all_returns = {}  # 用于相关性矩阵
 
+    # A股+ETF
     for code, info in all_items.items():
-        closes = fetch_hist_closes(code, 120)
+        closes = fetch_hist_closes(code, 120, market="a")
         if len(closes) < 20:
             stats.append({"code": code, "name": info["name"], "error": "数据不足"})
             continue
@@ -188,15 +213,58 @@ def run_stats() -> dict:
         beta = calc_beta(returns, index_returns)
 
         stats.append({
-            "code": code,
-            "name": info["name"],
-            "sector": info.get("sector", ""),
-            "annual_return": annual_ret,
-            "volatility": vol,
-            "sharpe": sharpe,
-            "max_drawdown": max_dd["pct"],
-            "max_dd_days": max_dd["days"],
-            "beta": beta,
+            "code": code, "name": info["name"],
+            "sector": info.get("sector", ""), "market": "A股",
+            "annual_return": annual_ret, "volatility": vol,
+            "sharpe": sharpe, "max_drawdown": max_dd["pct"],
+            "max_dd_days": max_dd["days"], "beta": beta,
+        })
+
+    # 港股
+    for code, info in hk_items.items():
+        closes = fetch_hist_closes(code, 120, market="hk")
+        if len(closes) < 20:
+            stats.append({"code": code, "name": info["name"], "error": "数据不足", "market": "港股"})
+            continue
+
+        returns = calc_returns(closes)
+        all_returns[code] = returns
+
+        annual_ret = calc_annual_return(closes)
+        vol = calc_volatility(returns)
+        sharpe = calc_sharpe(annual_ret, vol)
+        max_dd = calc_max_drawdown(closes)
+        beta = calc_beta(returns, index_returns)
+
+        stats.append({
+            "code": code, "name": info["name"],
+            "sector": "港股", "market": "港股",
+            "annual_return": annual_ret, "volatility": vol,
+            "sharpe": sharpe, "max_drawdown": max_dd["pct"],
+            "max_dd_days": max_dd["days"], "beta": beta,
+        })
+
+    # 美股
+    for code, info in us_items.items():
+        closes = fetch_hist_closes(code, 120, market="us")
+        if len(closes) < 20:
+            stats.append({"code": code, "name": info["name"], "error": "数据不足", "market": "美股"})
+            continue
+
+        returns = calc_returns(closes)
+        all_returns[code] = returns
+
+        annual_ret = calc_annual_return(closes)
+        vol = calc_volatility(returns)
+        sharpe = calc_sharpe(annual_ret, vol)
+        max_dd = calc_max_drawdown(closes)
+
+        stats.append({
+            "code": code, "name": info["name"],
+            "sector": "美股", "market": "美股",
+            "annual_return": annual_ret, "volatility": vol,
+            "sharpe": sharpe, "max_drawdown": max_dd["pct"],
+            "max_dd_days": max_dd["days"], "beta": 0,
         })
 
     # 相关性矩阵（只取有数据的）

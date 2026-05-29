@@ -35,8 +35,18 @@ def load_holdings():
         return json.load(f)
 
 
-def fetch_hist(code: str, days: int = 60) -> list:
-    """获取历史收盘价"""
+def fetch_hist(code: str, days: int = 60, market: str = "a") -> list:
+    """获取历史收盘价
+    market: "a"=A股(akshare), "hk"=港股(yahoo), "us"=美股(yahoo)
+    """
+    if market == "a":
+        return _fetch_hist_a(code, days)
+    else:
+        return _fetch_hist_yahoo(code, days, market)
+
+
+def _fetch_hist_a(code: str, days: int = 60) -> list:
+    """A股历史数据（akshare）"""
     import akshare as ak
     try:
         end = datetime.now().strftime("%Y%m%d")
@@ -46,6 +56,34 @@ def fetch_hist(code: str, days: int = 60) -> list:
         if df.empty:
             return []
         return df['收盘'].tolist()[-days:]
+    except Exception:
+        return []
+
+
+def _fetch_hist_yahoo(code: str, days: int = 60, market: str = "hk") -> list:
+    """港美股历史数据（Yahoo Finance）"""
+    import urllib.request, ssl, json as _json
+    if market == "hk":
+        symbol = f"{code.zfill(4)}.HK"
+    else:
+        symbol = code.upper()
+
+    # Yahoo Finance chart API: 获取近N天日K
+    period1 = int((datetime.now() - timedelta(days=days + 5)).timestamp())
+    period2 = int(datetime.now().timestamp())
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval=1d"
+
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+        with opener.open(req, timeout=10) as resp:
+            data = _json.loads(resp.read().decode('utf-8'))
+        closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        # 过滤 None 值
+        return [c for c in closes if c is not None][-days:]
     except Exception:
         return []
 
@@ -95,8 +133,7 @@ def analyze_risk() -> dict:
     # 获取实时价格
     all_codes = list(holdings.get("stocks", {}).keys()) + list(holdings.get("etfs", {}).keys())
 
-    # 注意：港股和美股暂不纳入A股风控扫描（不同市场、不同交易时段）
-    # 港股/美股风险在 morning_data.py 中单独展示
+    # 港股和美股也纳入风控扫描
 
     # 用 push2 获取价格
     prices = {}
@@ -141,7 +178,7 @@ def analyze_risk() -> dict:
         sector_mv[sector] = sector_mv.get(sector, 0) + mv
 
         # 历史数据
-        closes = fetch_hist(code, 60)
+        closes = fetch_hist(code, 60, market="a")
         volatility = calc_volatility(closes)
         max_dd = calc_max_drawdown(closes)
         var_95 = calc_var_95(closes, mv)
@@ -179,6 +216,69 @@ def analyze_risk() -> dict:
             "var_95": var_95,
             "ma_bearish": ma_bearish,
             "alerts": alerts,
+            "market": "A股",
+        })
+
+    # 港股
+    for code, info in holdings.get("hk_stocks", {}).items():
+        closes = fetch_hist(code, 60, market="hk")
+        if not closes:
+            continue
+        price = closes[-1]
+        mv = price * info["shares"]  # HKD
+        total_mv += mv * 0.87  # 粗略折算人民币
+        sector = "港股"
+        sector_mv[sector] = sector_mv.get(sector, 0) + mv * 0.87
+
+        volatility = calc_volatility(closes)
+        max_dd = calc_max_drawdown(closes)
+        var_95 = calc_var_95(closes, mv * 0.87)
+        pnl_pct = (price - info["cost"]) / info["cost"] * 100
+
+        alerts = []
+        if pnl_pct <= -25:
+            alerts.append("🔴 浮亏超-25%，建议止损")
+        elif pnl_pct <= -15:
+            alerts.append("🟡 浮亏>15%，关注")
+        if volatility > 60:
+            alerts.append("⚠️ 年化波动率>60%")
+
+        stock_risks.append({
+            "code": code, "name": info["name"], "sector": sector,
+            "price": price, "cost": info["cost"], "shares": info["shares"],
+            "mv": round(mv * 0.87, 0), "pnl_pct": round(pnl_pct, 2),
+            "volatility": volatility, "max_drawdown": max_dd, "var_95": var_95,
+            "ma_bearish": False, "alerts": alerts, "market": "港股",
+        })
+
+    # 美股
+    for code, info in holdings.get("us_stocks", {}).items():
+        closes = fetch_hist(code, 60, market="us")
+        if not closes:
+            continue
+        price = closes[-1]
+        mv = price * info["shares"]  # USD
+        total_mv += mv * 6.78  # 粗略折算人民币
+        sector = "美股"
+        sector_mv[sector] = sector_mv.get(sector, 0) + mv * 6.78
+
+        volatility = calc_volatility(closes)
+        max_dd = calc_max_drawdown(closes)
+        var_95 = calc_var_95(closes, mv * 6.78)
+        pnl_pct = (price - info["cost"]) / info["cost"] * 100
+
+        alerts = []
+        if pnl_pct <= -25:
+            alerts.append("🔴 浮亏超-25%，建议止损")
+        if volatility > 60:
+            alerts.append("⚠️ 年化波动率>60%")
+
+        stock_risks.append({
+            "code": code, "name": info["name"], "sector": sector,
+            "price": price, "cost": info["cost"], "shares": info["shares"],
+            "mv": round(mv * 6.78, 0), "pnl_pct": round(pnl_pct, 2),
+            "volatility": volatility, "max_drawdown": max_dd, "var_95": var_95,
+            "ma_bearish": False, "alerts": alerts, "market": "美股",
         })
 
     # 集中度分析
