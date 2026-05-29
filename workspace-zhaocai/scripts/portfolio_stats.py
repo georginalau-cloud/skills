@@ -162,6 +162,8 @@ def run_stats() -> dict:
     """完整统计分析"""
     holdings = load_holdings()
     all_items = {**holdings.get("stocks", {}), **holdings.get("etfs", {})}
+    # 注意：港股/美股使用不同数据源，暂不纳入A股统计分析
+    # 后续可扩展 fetch_hist 支持港股代码
 
     # 获取沪深300
     index_closes = fetch_index_closes(120)

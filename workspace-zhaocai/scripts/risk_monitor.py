@@ -95,6 +95,9 @@ def analyze_risk() -> dict:
     # 获取实时价格
     all_codes = list(holdings.get("stocks", {}).keys()) + list(holdings.get("etfs", {}).keys())
 
+    # 注意：港股和美股暂不纳入A股风控扫描（不同市场、不同交易时段）
+    # 港股/美股风险在 morning_data.py 中单独展示
+
     # 用 push2 获取价格
     prices = {}
     try:

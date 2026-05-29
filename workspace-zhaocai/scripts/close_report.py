@@ -127,6 +127,36 @@ def fetch_holdings_prices(holdings: dict) -> dict:
     return result
 
 
+def fetch_hk_prices(hk_holdings: dict) -> dict:
+    """获取港股持仓收盘价（腾讯财经）"""
+    if not hk_holdings:
+        return {}
+    result = {}
+    symbols = [f"hk{code.zfill(5)}" for code in hk_holdings.keys()]
+    url = f"https://qt.gtimg.cn/q={','.join(symbols)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with _get_opener().open(req, timeout=10) as resp:
+            raw = resp.read().decode('gbk', errors='ignore')
+        for line in raw.strip().split(';'):
+            if '~' not in line:
+                continue
+            parts = line.split('~')
+            if len(parts) < 35:
+                continue
+            code = parts[2].strip().zfill(5)
+            try:
+                price = float(parts[3])
+                change_pct = float(parts[32])
+                if price > 0:
+                    result[code] = {"price": price, "change_pct": change_pct}
+            except (ValueError, IndexError):
+                pass
+    except Exception:
+        pass
+    return result
+
+
 def build_stock_report(holdings: dict, prices: dict) -> list:
     """构建个股盈亏报告"""
     results = []
@@ -264,10 +294,71 @@ def build_full_report() -> dict:
     # 大盘
     indexes = fetch_indexes()
 
-    # 个股+ETF
+    # A股个股+ETF
     prices = fetch_holdings_prices(holdings)
     stocks = build_stock_report(holdings, prices)
     etfs = build_etf_report(holdings, prices)
+
+    # 港股
+    hk_holdings = holdings.get("hk_stocks", {})
+    hk_prices = fetch_hk_prices(hk_holdings)
+    hk_stocks = []
+    for code, info in hk_holdings.items():
+        p = hk_prices.get(code, {})
+        price = p.get("price", 0)
+        if not price:
+            hk_stocks.append({"code": code, "name": info["name"], "error": "无数据"})
+            continue
+        chg_pct = p.get("change_pct", 0)
+        prev = price / (1 + chg_pct / 100) if chg_pct else price
+        today_pnl = round((price - prev) * info["shares"], 0)
+        total_pnl = round((price - info["cost"]) * info["shares"], 0)
+        total_pnl_pct = round((price - info["cost"]) / info["cost"] * 100, 2)
+        hk_stocks.append({
+            "code": code, "name": info["name"],
+            "price": price, "change_pct": chg_pct,
+            "shares": info["shares"], "cost": info["cost"],
+            "today_pnl": today_pnl, "total_pnl": total_pnl, "total_pnl_pct": total_pnl_pct,
+            "currency": "HKD",
+        })
+    hk_stocks.sort(key=lambda x: x.get("today_pnl", 0), reverse=True)
+
+    # 美股
+    us_holdings = holdings.get("us_stocks", {})
+    us_stocks = []
+    # 美股用腾讯接口
+    if us_holdings:
+        symbols = [f"us{code.upper()}" for code in us_holdings.keys()]
+        url = f"https://qt.gtimg.cn/q={','.join(symbols)}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with _get_opener().open(req, timeout=10) as resp:
+                raw = resp.read().decode('gbk', errors='ignore')
+            for line in raw.strip().split(';'):
+                if '~' not in line:
+                    continue
+                parts = line.split('~')
+                if len(parts) < 35:
+                    continue
+                code = parts[2].strip().upper()
+                if code in us_holdings:
+                    info = us_holdings[code]
+                    try:
+                        price = float(parts[3])
+                        chg_pct = float(parts[32])
+                        prev = price / (1 + chg_pct / 100) if chg_pct else price
+                        today_pnl = round((price - prev) * info["shares"], 0)
+                        total_pnl = round((price - info["cost"]) * info["shares"], 0)
+                        us_stocks.append({
+                            "code": code, "name": info["name"],
+                            "price": price, "change_pct": chg_pct,
+                            "today_pnl": today_pnl, "total_pnl": total_pnl,
+                            "currency": "USD",
+                        })
+                    except (ValueError, IndexError):
+                        pass
+        except Exception:
+            pass
 
     # 基金
     fund_report = build_fund_report(holdings)
@@ -275,13 +366,15 @@ def build_full_report() -> dict:
     # 汇总
     stock_today = sum(s.get("today_pnl", 0) for s in stocks if "error" not in s)
     etf_today = sum(e.get("today_pnl", 0) for e in etfs if "error" not in e)
+    hk_today = sum(s.get("today_pnl", 0) for s in hk_stocks if "error" not in s)
+    us_today = sum(s.get("today_pnl", 0) for s in us_stocks)
     fund_today = fund_report.get("grand_total", 0) if isinstance(fund_report, dict) else 0
 
     stock_total = sum(s.get("total_pnl", 0) for s in stocks if "error" not in s)
     etf_total = sum(e.get("total_pnl", 0) for e in etfs if "error" not in e)
+    hk_total = sum(s.get("total_pnl", 0) for s in hk_stocks if "error" not in s)
 
-    total_today = stock_today + etf_today + fund_today
-    total_accumulated = stock_total + etf_total  # 基金累计浮盈需要另算
+    total_today = stock_today + etf_today + hk_today + us_today + fund_today
 
     return {
         "_meta": {
@@ -292,12 +385,18 @@ def build_full_report() -> dict:
         "indexes": indexes,
         "stocks": stocks,
         "etfs": etfs,
+        "hk_stocks": hk_stocks,
+        "us_stocks": us_stocks,
         "funds": fund_report,
         "summary": {
             "today_pnl_stocks": stock_today,
             "today_pnl_etfs": etf_today,
+            "today_pnl_hk": hk_today,
+            "today_pnl_us": us_today,
             "today_pnl_funds": fund_today,
             "today_pnl_total": total_today,
+            "total_pnl_stocks_etfs": stock_total + etf_total,
+            "total_pnl_hk": hk_total,
             "total_pnl_stocks_etfs": stock_total + etf_total,
         },
     }
